@@ -1,0 +1,40 @@
+/**
+ * Códigos estáveis e legíveis por máquina. O provedor decide pelo código, nunca pela mensagem:
+ * - payload inválido → corrigir e reenviar;
+ * - conflito → não reenviar o mesmo pedido;
+ * - rejeição de negócio → terminal, desistir;
+ * - transitório → reenviar com backoff.
+ */
+export const FailureCode = {
+  // payload inválido
+  INVALID_PAYLOAD: "INVALID_PAYLOAD",
+  INVALID_MONEY: "INVALID_MONEY",
+  MISSING_IDEMPOTENCY_KEY: "MISSING_IDEMPOTENCY_KEY",
+  KIND_NOT_ALLOWED: "KIND_NOT_ALLOWED",
+  // não encontrado (consultas) / wallet inexistente (submissão)
+  WALLET_NOT_FOUND: "WALLET_NOT_FOUND",
+  TRANSACTION_NOT_FOUND: "TRANSACTION_NOT_FOUND",
+  // conflito
+  IDEMPOTENCY_KEY_PAYLOAD_MISMATCH: "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH",
+  EXTERNAL_TRANSACTION_ID_REUSED: "EXTERNAL_TRANSACTION_ID_REUSED",
+  WALLET_ALREADY_EXISTS: "WALLET_ALREADY_EXISTS",
+  // rejeição de negócio (terminal)
+  INSUFFICIENT_FUNDS: "INSUFFICIENT_FUNDS",
+  REVERSAL_INSUFFICIENT_FUNDS: "REVERSAL_INSUFFICIENT_FUNDS",
+  CURRENCY_MISMATCH: "CURRENCY_MISMATCH",
+  WALLET_PLAYER_MISMATCH: "WALLET_PLAYER_MISMATCH",
+  REFERENCE_NOT_FOUND: "REFERENCE_NOT_FOUND",
+  REFERENCE_MISMATCH: "REFERENCE_MISMATCH",
+  REFERENCE_KIND_NOT_ALLOWED: "REFERENCE_KIND_NOT_ALLOWED",
+  REFERENCE_AMOUNT_MISMATCH: "REFERENCE_AMOUNT_MISMATCH",
+  REFERENCE_NOT_PROCESSED: "REFERENCE_NOT_PROCESSED",
+  REFERENCE_ALREADY_REVERSED: "REFERENCE_ALREADY_REVERSED",
+  // transitório
+  DATABASE_UNAVAILABLE: "DATABASE_UNAVAILABLE",
+  LOCK_TIMEOUT: "LOCK_TIMEOUT",
+  QUEUE_UNAVAILABLE: "QUEUE_UNAVAILABLE",
+  // falha permanente de processamento (status FAILED, auditável)
+  PROCESSING_FAILED: "PROCESSING_FAILED",
+} as const;
+
+export type FailureCode = (typeof FailureCode)[keyof typeof FailureCode];
