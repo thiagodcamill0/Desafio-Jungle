@@ -1,11 +1,21 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import type { INestApplication } from "@nestjs/common";
+import type { DestinationStream } from "pino";
 import { AppModule } from "./app.module";
 import { loadConfig, type AppConfig } from "./infrastructure/config";
+import { correlationMiddleware, createLogger, PinoLoggerService, requestLogger } from "./infrastructure/observability/logger";
 
-export async function createApp(config: AppConfig): Promise<INestApplication> {
-  return NestFactory.create(AppModule.register(config), { logger: ["error", "warn"] });
+export interface AppExtras {
+  logStream?: DestinationStream;
+}
+
+export async function createApp(config: AppConfig, extras: AppExtras = {}): Promise<INestApplication> {
+  const logger = createLogger(config.logLevel, extras.logStream);
+  const app = await NestFactory.create(AppModule.register(config), { logger: new PinoLoggerService(logger) });
+  app.use(correlationMiddleware);
+  app.use(requestLogger(logger));
+  return app;
 }
 
 if (import.meta.main) {

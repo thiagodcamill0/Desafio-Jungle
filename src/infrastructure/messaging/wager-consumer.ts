@@ -17,6 +17,7 @@ import { DomainError } from "../../domain/errors";
 import { FailureCode } from "../../domain/failure-code";
 import { canonicalJson } from "../../domain/payload-hash";
 import type { AppConfig } from "../config";
+import { addToLogContext, runWithLogContext } from "../observability/log-context";
 import { resolveQueueUrl } from "./sqs";
 
 export const CONSUMER_NAME = "wager-consumer";
@@ -97,22 +98,32 @@ export class WagerConsumer {
   }
 
   async handle(queueUrl: string, message: Message): Promise<HandleOutcome> {
+    return runWithLogContext({ correlationId: message.MessageId ?? "unknown" }, () => this.process(queueUrl, message));
+  }
+
+  private async process(queueUrl: string, message: Message): Promise<HandleOutcome> {
     const receiveCount = Number(message.Attributes?.ApproximateReceiveCount ?? "1");
     const parsed = parseEnvelope(message.Body);
     if (!parsed) return this.deadLetter(queueUrl, message, FailureCode.INVALID_PAYLOAD);
 
     const { messageId, data } = parsed;
     const { idempotencyKey, ...fields } = data;
+    addToLogContext({ correlationId: messageId, messageId, walletId: data.walletId, providerId: data.providerId });
+    const started = performance.now();
     try {
       const outcome = await this.submitWager.execute(
         { ...fields, idempotencyKey },
         { correlationId: messageId, inbox: { consumerName: CONSUMER_NAME, messageId, payloadHash: hashOf(parsed) } },
       );
+      this.metrics.observe("processing_latency_seconds", (performance.now() - started) / 1_000, { source: "sqs" });
       if ("duplicateInbox" in outcome) {
         this.metrics.inc("duplicates_total", { source: "inbox" });
+        this.logger.log({ msg: "duplicate message ignored (inbox)" });
       } else {
-        this.metrics.inc("transactions_total", { status: outcome.status, source: "sqs" });
         if (outcome.idempotentReplay) this.metrics.inc("duplicates_total", { source: "idempotency" });
+        else this.metrics.inc("transactions_total", { status: outcome.status, kind: data.kind, source: "sqs" });
+        addToLogContext({ transactionId: outcome.transactionId });
+        this.logger.log({ msg: "wager transaction decided", kind: data.kind, status: outcome.status, failureCode: outcome.failureCode, idempotentReplay: outcome.idempotentReplay });
       }
       this.faults.hit("after-commit-before-ack");
       await this.delete(queueUrl, message);

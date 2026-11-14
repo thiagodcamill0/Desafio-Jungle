@@ -1,10 +1,13 @@
-import { Body, Controller, Get, Headers, Inject, Param, Post, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Logger, Param, Post, Res, UseGuards } from "@nestjs/common";
 import { ValidationError } from "../../application/errors";
+import type { Metrics } from "../../application/ports";
 import { TransactionQueries } from "../../application/queries";
 import { SubmitWagerTransaction, type SubmitResult } from "../../application/submit-wager-transaction";
 import type { TransactionView } from "../../application/views";
 import { FailureCode } from "../../domain/failure-code";
 import { WagerTransactionStatus } from "../../domain/wager-transaction";
+import { addToLogContext, currentLogContext } from "../../infrastructure/observability/log-context";
+import { METRICS } from "../../tokens";
 import { parseInput, uuidParam, wagerBody } from "./dto";
 import { ProviderAuthGuard } from "./provider-auth.guard";
 
@@ -22,9 +25,12 @@ const STATUS_BY_RESULT: Record<string, number> = {
 @Controller("wagering")
 @UseGuards(ProviderAuthGuard)
 export class WageringController {
+  private readonly logger = new Logger("WageringController");
+
   constructor(
     @Inject(SubmitWagerTransaction) private readonly submitWager: SubmitWagerTransaction,
     @Inject(TransactionQueries) private readonly queries: TransactionQueries,
+    @Inject(METRICS) private readonly metrics: Metrics,
   ) {}
 
   @Get("transactions/:transactionId")
@@ -36,14 +42,21 @@ export class WageringController {
   async submit(
     @Body() body: unknown,
     @Headers("idempotency-key") idempotencyKeyHeader: string | undefined,
-    @Headers("x-correlation-id") correlationId: string | undefined,
     @Res() res: JsonResponse,
   ): Promise<void> {
     const idempotencyKey = idempotencyKeyHeader?.trim();
     if (!idempotencyKey) throw new ValidationError(FailureCode.MISSING_IDEMPOTENCY_KEY, "Idempotency-Key header is required");
     const input = parseInput(wagerBody, body);
 
-    const result = (await this.submitWager.execute({ ...input, idempotencyKey }, { correlationId: correlationId ?? Bun.randomUUIDv7() })) as SubmitResult;
+    const correlationId = currentLogContext()?.correlationId ?? Bun.randomUUIDv7();
+    const started = performance.now();
+    const result = (await this.submitWager.execute({ ...input, idempotencyKey }, { correlationId })) as SubmitResult;
+    this.metrics.observe("processing_latency_seconds", (performance.now() - started) / 1_000, { source: "http" });
+    if (result.idempotentReplay) this.metrics.inc("duplicates_total", { source: "idempotency" });
+    else this.metrics.inc("transactions_total", { status: result.status, kind: input.kind, source: "http" });
+    addToLogContext({ transactionId: result.transactionId, walletId: input.walletId, providerId: input.providerId });
+    this.logger.log({ msg: "wager transaction decided", kind: input.kind, status: result.status, failureCode: result.failureCode, idempotentReplay: result.idempotentReplay });
+
     const status = STATUS_BY_RESULT[result.status] ?? 500;
     if (status === 422) {
       res.status(status).json({ code: result.failureCode, message: `Transaction rejected: ${result.failureCode}`, ...result });

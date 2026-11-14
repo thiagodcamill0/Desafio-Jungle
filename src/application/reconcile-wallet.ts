@@ -43,12 +43,8 @@ export class ReconcileWallet {
 
     if (!report.consistent) {
       this.metrics.inc("reconciliation_mismatches_total");
-      this.alert.error("Wallet balance does not match ledger", {
-        walletId,
-        storedBalance: report.storedBalance.amount,
-        calculatedBalance: report.calculatedBalance.amount,
-        difference: report.difference.amount,
-      });
+      // valores ficam na resposta, não no log
+      this.alert.error("Wallet balance does not match ledger", { walletId, checkedEntries: report.checkedEntries });
     }
     return report;
   }

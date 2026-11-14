@@ -14,6 +14,7 @@ export interface AppConfig {
   visibilityTimeoutSeconds: number;
   maxReceiveCount: number;
   faultPoint?: string;
+  logLevel: string;
 }
 
 type Env = Record<string, string | undefined>;
@@ -48,5 +49,6 @@ export function loadConfig(env: Env = process.env): AppConfig {
     visibilityTimeoutSeconds: int(env, "VISIBILITY_TIMEOUT_SECONDS", 30),
     maxReceiveCount: int(env, "MAX_RECEIVE_COUNT", 5),
     faultPoint: env.FAULT_POINT || undefined,
+    logLevel: env.LOG_LEVEL || "info",
   };
 }

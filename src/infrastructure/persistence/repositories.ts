@@ -6,6 +6,7 @@ import type {
   LedgerPage,
   LedgerRepository,
   OutboxRepository,
+  Metrics,
   Repositories,
   WagerTransactionRepository,
   WalletRepository,
@@ -24,11 +25,19 @@ const fresh = { disableIdentityMap: true } as const;
 const forUpdate = { ...fresh, lockMode: LockMode.PESSIMISTIC_WRITE } as const;
 const skipLocked = { ...fresh, lockMode: LockMode.PESSIMISTIC_PARTIAL_WRITE } as const;
 
-class MikroOrmWalletRepository implements WalletRepository {
-  constructor(private readonly em: EntityManager) {}
+const SLOW_LOCK_WAIT_MS = 100;
 
+class MikroOrmWalletRepository implements WalletRepository {
+  constructor(
+    private readonly em: EntityManager,
+    private readonly metrics?: Metrics,
+  ) {}
+
+  // mede a espera pelo lock: espera longa indica wallet disputada
   async lockById(id: string): Promise<Wallet | null> {
+    const started = performance.now();
     const row = await this.em.findOne(WalletSchema, { id }, forUpdate);
+    if (performance.now() - started > SLOW_LOCK_WAIT_MS) this.metrics?.inc("lock_conflicts_total", { reason: "slow_wait" });
     return row ? walletMapper.toDomain(row) : null;
   }
 
@@ -179,9 +188,9 @@ class MikroOrmOutboxRepository implements OutboxRepository {
   }
 }
 
-export function repositoriesFor(em: EntityManager): Repositories {
+export function repositoriesFor(em: EntityManager, metrics?: Metrics): Repositories {
   return {
-    wallets: new MikroOrmWalletRepository(em),
+    wallets: new MikroOrmWalletRepository(em, metrics),
     transactions: new MikroOrmWagerTransactionRepository(em),
     ledger: new MikroOrmLedgerRepository(em),
     inbox: new MikroOrmInboxRepository(em),

@@ -1,22 +1,23 @@
+import type { SQSClient } from "@aws-sdk/client-sqs";
 import { Logger, Module, type DynamicModule } from "@nestjs/common";
 import { APP_FILTER } from "@nestjs/core";
 import { MikroORM } from "@mikro-orm/postgresql";
 import { MikroOrmModule } from "@mikro-orm/nestjs";
 import { OpenWallet } from "./application/open-wallet";
-import { SubmitWagerTransaction } from "./application/submit-wager-transaction";
 import type { Clock, EventPublisher, FaultInjector, IdGenerator, Metrics, TransactionRunner } from "./application/ports";
 import { TransactionQueries, WalletQueries } from "./application/queries";
 import { ReconcileWallet } from "./application/reconcile-wallet";
-import type { SQSClient } from "@aws-sdk/client-sqs";
+import { SubmitWagerTransaction } from "./application/submit-wager-transaction";
 import type { AppConfig } from "./infrastructure/config";
 import { EnvFaultInjector } from "./infrastructure/fault-injector";
 import { OutboxPublisher } from "./infrastructure/messaging/outbox-publisher";
 import { createSqsClient, SqsEventPublisher } from "./infrastructure/messaging/sqs";
 import { WagerConsumer } from "./infrastructure/messaging/wager-consumer";
-import { HealthController } from "./infrastructure/observability/health.controller";
+import { HealthController, MetricsController } from "./infrastructure/observability/health.controller";
+import { PrometheusMetrics } from "./infrastructure/observability/metrics";
 import { mikroOrmOptions } from "./infrastructure/persistence/mikro-orm.config";
 import { MikroOrmTransactionRunner } from "./infrastructure/persistence/transaction-runner";
-import { AllowAllProviderIdentity, NoopMetrics, SystemClock, UuidV7Generator } from "./infrastructure/system";
+import { AllowAllProviderIdentity, SystemClock, UuidV7Generator } from "./infrastructure/system";
 import { PendingReferenceWorker } from "./infrastructure/workers/pending-reference-worker";
 import { HttpErrorFilter } from "./interface/http/error-mapping";
 import { ProviderAuthGuard } from "./interface/http/provider-auth.guard";
@@ -32,18 +33,23 @@ export class AppModule {
     return {
       module: AppModule,
       imports: [MikroOrmModule.forRoot(mikroOrmOptions(config))],
-      controllers: [HealthController, WalletsController, WageringController, ProviderTransactionsController],
+      controllers: [HealthController, MetricsController, WalletsController, WageringController, ProviderTransactionsController],
       providers: [
         { provide: APP_CONFIG, useValue: config },
         { provide: APP_FILTER, useClass: HttpErrorFilter },
         { provide: CLOCK, useClass: SystemClock },
         { provide: ID_GENERATOR, useClass: UuidV7Generator },
         { provide: PROVIDER_IDENTITY, useClass: AllowAllProviderIdentity },
-        { provide: METRICS, useClass: NoopMetrics },
+        { provide: PrometheusMetrics, useValue: new PrometheusMetrics() },
+        { provide: METRICS, useExisting: PrometheusMetrics },
         { provide: FAULT_INJECTOR, useValue: new EnvFaultInjector(config.faultPoint) },
         { provide: SQS_CLIENT, useFactory: () => createSqsClient(config) },
         { provide: EVENT_PUBLISHER, useFactory: (client: SQSClient) => new SqsEventPublisher(client, config.eventsQueueName), inject: [SQS_CLIENT] },
-        { provide: TRANSACTION_RUNNER, useFactory: (orm: MikroORM) => new MikroOrmTransactionRunner(orm), inject: [MikroORM] },
+        {
+          provide: TRANSACTION_RUNNER,
+          useFactory: (orm: MikroORM, metrics: Metrics) => new MikroOrmTransactionRunner(orm, undefined, metrics),
+          inject: [MikroORM, METRICS],
+        },
         {
           provide: OpenWallet,
           useFactory: (runner: TransactionRunner, clock: Clock, ids: IdGenerator) => new OpenWallet(runner, clock, ids),
@@ -78,7 +84,7 @@ export class AppModule {
           provide: ReconcileWallet,
           useFactory: (runner: TransactionRunner, metrics: Metrics) => {
             const logger = new Logger("Reconciliation");
-            return new ReconcileWallet(runner, metrics, { error: (message, context) => logger.error(`${message} ${JSON.stringify(context)}`) });
+            return new ReconcileWallet(runner, metrics, { error: (message, context) => logger.error({ msg: message, ...context }) });
           },
           inject: [TRANSACTION_RUNNER, METRICS],
         },

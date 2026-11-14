@@ -1,6 +1,6 @@
 import { ConnectionException, type MikroORM } from "@mikro-orm/postgresql";
-import { TransientInfraError, UniqueViolationError } from "../../application/errors";
-import type { Repositories, TransactionRunner } from "../../application/ports";
+import { ConcurrencyError, TransientInfraError, UniqueViolationError } from "../../application/errors";
+import type { Metrics, Repositories, TransactionRunner } from "../../application/ports";
 import { FailureCode } from "../../domain/failure-code";
 import { repositoriesFor } from "./repositories";
 
@@ -16,16 +16,20 @@ export class MikroOrmTransactionRunner implements TransactionRunner {
   constructor(
     private readonly orm: MikroORM,
     private readonly options: TransactionRunnerOptions = { lockTimeoutMs: 5_000 },
+    private readonly metrics?: Metrics,
   ) {}
 
   async run<T>(work: (repos: Repositories) => Promise<T>): Promise<T> {
     try {
       return await this.orm.em.fork().transactional(async (em) => {
         await em.execute(`set local lock_timeout = '${Math.trunc(this.options.lockTimeoutMs)}ms'`);
-        return work(repositoriesFor(em));
+        return work(repositoriesFor(em, this.metrics));
       });
     } catch (error) {
-      throw translateDatabaseError(error);
+      const translated = translateDatabaseError(error);
+      if (translated instanceof TransientInfraError && translated.code === FailureCode.LOCK_TIMEOUT) this.metrics?.inc("lock_conflicts_total", { reason: "timeout" });
+      if (translated instanceof ConcurrencyError) this.metrics?.inc("lock_conflicts_total", { reason: "version" });
+      throw translated;
     }
   }
 }
