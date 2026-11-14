@@ -14,6 +14,8 @@ export function mikroOrmOptions(config: Pick<AppConfig, "databaseUrl">) {
       migrationsList: [{ name: "Migration20261113000000", class: Migration20261113000000 }],
       transactional: true,
       allOrNothing: true,
+      snapshot: false,
+      silent: true,
     },
     pool: { min: 0, max: 20 },
     debug: false,
