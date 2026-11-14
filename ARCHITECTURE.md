@@ -89,7 +89,7 @@ Wallets diferentes não compartilham lock nenhum e rodam em paralelo. Os workers
 
 ## Invariantes garantidas no schema
 
-A migration (`Migration20261113000000`, com `up` e `down`) coloca no banco o que não pode depender só do código:
+As migrations (`Migration20261113000000` e `Migration20261114000000`, ambas com `up` e `down`) colocam no banco o que não pode depender só do código:
 
 | Invariante | Como |
 |---|---|
@@ -120,7 +120,7 @@ PENDING ──► PROCESSED            (terminal)
 
 - `PENDING` só existe dentro da transação SQL: nenhuma transação sai do caso de uso nesse estado.
 - Mudar uma transação terminal lança `InvalidTransactionStateError`. Isso é erro de programação, não caminho de negócio, e o trigger do banco repete a garantia.
-- Toda transação persistida guarda o **saldo observado no momento da decisão** (`observed_balance`). É assim que o replay devolve "o resultado original, incluindo o saldo daquele momento", mesmo depois de outras apostas terem mudado o saldo.
+- Toda transação persistida guarda o **saldo observado no momento da decisão** (`observed_balance` e `observed_currency`, que é a moeda da wallet e não a da transação). É assim que o replay devolve "o resultado original, incluindo o saldo daquele momento", mesmo depois de outras apostas terem mudado o saldo.
 - `FAILED` existe no modelo e no schema para erro permanente que não é de negócio. Na prática, os fluxos atuais terminam em `PROCESSED` ou `REJECTED`, e as falhas de infraestrutura são tratadas como transitórias e com retry.
 
 ## Regras de negócio
@@ -139,7 +139,7 @@ A ordem de validação dentro da transação é esta:
 1. A transação precisa ser do dono da wallet (`WALLET_PLAYER_MISMATCH`) e na moeda da wallet (`CURRENCY_MISMATCH`). Isso é checado antes de procurar a referência, para que um REFUND do player errado seja recusado na hora em vez de esperar a referência.
 2. A referência é resolvida por `(providerId, referenceExternalTransactionId)`. Se não existe, ou se ela própria está `PENDING_REFERENCE`, a transação fica `PENDING_REFERENCE` e a resposta é 202.
 3. A referência precisa ser do mesmo provider, player, wallet, moeda e rodada (`REFERENCE_MISMATCH`), de um kind permitido (`REFERENCE_KIND_NOT_ALLOWED`), estar `PROCESSED` (`REFERENCE_NOT_PROCESSED`) e, na reversão, ter o mesmo valor (`REFERENCE_AMOUNT_MISMATCH`) e ainda não ter sido revertida (`REFERENCE_ALREADY_REVERSED`).
-4. A wallet aplica o débito ou crédito. Saldo insuficiente vira `INSUFFICIENT_FUNDS` numa BET e `REVERSAL_INSUFFICIENT_FUNDS` numa reversão. São situações diferentes para a operação: a primeira é o jogador sem saldo, a segunda é dinheiro que já foi gasto antes de o provedor desfazer a operação.
+4. A wallet aplica o débito ou crédito. Saldo insuficiente vira `INSUFFICIENT_FUNDS` numa BET e `REVERSAL_INSUFFICIENT_FUNDS` numa reversão. São situações diferentes para a operação: a primeira é o jogador sem saldo, a segunda é dinheiro que já foi gasto antes de o provedor desfazer a operação. Um crédito que levaria o saldo acima de 99999999999999999.99, o máximo que cabe em `NUMERIC(19,2)`, vira `BALANCE_LIMIT_EXCEEDED`.
 
 As rejeições são persistidas como `REJECTED`, geram o evento `WagerTransactionRejected` e não tocam saldo nem ledger.
 
@@ -167,7 +167,7 @@ Todos os endpoints respondem erro no mesmo formato, `{ code, message }`. Na reje
 | 400 | payload inválido | `INVALID_PAYLOAD`, `INVALID_MONEY`, `MISSING_IDEMPOTENCY_KEY`, `KIND_NOT_ALLOWED` | corrigir e reenviar |
 | 404 | recurso de consulta inexistente | `WALLET_NOT_FOUND`, `TRANSACTION_NOT_FOUND`, `ROUTE_NOT_FOUND` | — |
 | 409 | conflito | `IDEMPOTENCY_KEY_PAYLOAD_MISMATCH`, `EXTERNAL_TRANSACTION_ID_REUSED`, `WALLET_ALREADY_EXISTS` | não reenviar o mesmo pedido |
-| 422 | rejeição de negócio (terminal) | `INSUFFICIENT_FUNDS`, `REVERSAL_INSUFFICIENT_FUNDS`, `CURRENCY_MISMATCH`, `WALLET_PLAYER_MISMATCH`, `WALLET_NOT_FOUND`, `REFERENCE_NOT_FOUND`, `REFERENCE_MISMATCH`, `REFERENCE_KIND_NOT_ALLOWED`, `REFERENCE_AMOUNT_MISMATCH`, `REFERENCE_NOT_PROCESSED`, `REFERENCE_ALREADY_REVERSED` | desistir; o replay devolve o mesmo 422 |
+| 422 | rejeição de negócio (terminal) | `INSUFFICIENT_FUNDS`, `REVERSAL_INSUFFICIENT_FUNDS`, `CURRENCY_MISMATCH`, `WALLET_PLAYER_MISMATCH`, `WALLET_NOT_FOUND`, `REFERENCE_NOT_FOUND`, `REFERENCE_MISMATCH`, `REFERENCE_KIND_NOT_ALLOWED`, `REFERENCE_AMOUNT_MISMATCH`, `REFERENCE_NOT_PROCESSED`, `REFERENCE_ALREADY_REVERSED`, `BALANCE_LIMIT_EXCEEDED` | desistir; o replay devolve o mesmo 422 |
 | 503 + `Retry-After: 1` | falha transitória | `DATABASE_UNAVAILABLE`, `LOCK_TIMEOUT`, `QUEUE_UNAVAILABLE` | reenviar com backoff |
 
 `WALLET_NOT_FOUND` aparece em dois lugares. Num `GET`, é 404. Ao submeter uma transação, é 422 e **não é persistida**, porque não há wallet a que associar a transação.
@@ -203,6 +203,7 @@ Por que 5 minutos: o provedor costuma mandar a referência em segundos, e o atra
   - Se o processamento falha antes do commit, a linha do inbox também desaparece, e a reentrega é processada normalmente.
 - O **ack (delete) só acontece depois do commit**. Se o processo morrer entre o commit e o ack, a mensagem volta depois do visibility timeout, o inbox a reconhece e nada é aplicado duas vezes. Há teste disso com um processo real morto nesse ponto exato.
 - **Retry:** um erro transitório faz `ChangeMessageVisibility` de `min(2^receiveCount, 60)` segundos. Quando `receiveCount` chega a `MAX_RECEIVE_COUNT` (5 por padrão), o consumidor manda a mensagem para a DLQ, com o atributo `failureCode`. A `RedrivePolicy` da fila continua lá como rede extra, para o caso de um processo que morre antes de conseguir classificar o erro.
+- **Banco fora do ar:** um `DATABASE_UNAVAILABLE` não conta contra o limite de tentativas. O consumidor para de chamar `ReceiveMessage` e testa o banco com `select 1`, com espera crescente de até 10 s. As mensagens já recebidas voltam para a fila. Sem essa pausa, uma queda de uns 30 s mandaria para a DLQ tudo que chegasse nesse intervalo, porque cada recebimento aumenta o contador do SQS.
 - **SIGTERM:**
   1. o consumidor para de chamar `ReceiveMessage` e aborta o long poll;
   2. termina a mensagem em andamento, com até 20 s de tolerância;
@@ -280,6 +281,7 @@ O desenho que eu adotaria:
 8. **Dinheiro em formato errado**, inclusive `amount` numérico, dá 400 `INVALID_MONEY`, não `INVALID_PAYLOAD`. O código é mais útil para o provedor saber o que corrigir.
 9. **Um replay pelo SQS** (`messageId` novo, mesma key) recebe ack e conta como duplicata de idempotência.
 10. **O ledger** é paginado do lançamento mais recente para o mais antigo. O cursor é o `seq` do lançamento codificado em base64url, e por isso é estável mesmo com lançamentos novos chegando no meio da paginação, o que não aconteceria com `OFFSET`.
+11. **Campos de texto** (ids, rodada, jogo, `Idempotency-Key`) têm no máximo 255 caracteres e não podem conter o caractere NUL. Os dois casos dão 400 `INVALID_PAYLOAD`, em vez de chegar ao Postgres e virar 500 ou um falso 503.
 
 ## Testes
 
