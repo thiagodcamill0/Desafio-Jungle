@@ -34,7 +34,7 @@ export async function receiveAll(queueName: string, waitMs: number): Promise<any
   while (Date.now() < deadline) {
     const res = await sqs.send(new ReceiveMessageCommand({ QueueUrl: url, MaxNumberOfMessages: 10, WaitTimeSeconds: 1 }));
     for (const message of res.Messages ?? []) {
-      bodies.push(JSON.parse(message.Body ?? "null"));
+      bodies.push(parseBody(message.Body));
       await sqs.send(new DeleteMessageCommand({ QueueUrl: url, ReceiptHandle: message.ReceiptHandle }));
     }
   }
@@ -44,4 +44,12 @@ export async function receiveAll(queueName: string, waitMs: number): Promise<any
 export async function sendRaw(queueName: string, body: string, groupId: string, dedupId: string): Promise<void> {
   const url = await resolveQueueUrl(sqs, queueName);
   await sqs.send(new SendMessageCommand({ QueueUrl: url, MessageBody: body, MessageGroupId: groupId, MessageDeduplicationId: dedupId }));
+}
+
+function parseBody(body: string | undefined): unknown {
+  try {
+    return JSON.parse(body ?? "null");
+  } catch {
+    return body;
+  }
 }

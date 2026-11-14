@@ -12,6 +12,7 @@ import type { AppConfig } from "./infrastructure/config";
 import { EnvFaultInjector } from "./infrastructure/fault-injector";
 import { OutboxPublisher } from "./infrastructure/messaging/outbox-publisher";
 import { createSqsClient, SqsEventPublisher } from "./infrastructure/messaging/sqs";
+import { WagerConsumer } from "./infrastructure/messaging/wager-consumer";
 import { HealthController } from "./infrastructure/observability/health.controller";
 import { mikroOrmOptions } from "./infrastructure/persistence/mikro-orm.config";
 import { MikroOrmTransactionRunner } from "./infrastructure/persistence/transaction-runner";
@@ -52,6 +53,12 @@ export class AppModule {
           provide: SubmitWagerTransaction,
           useFactory: (runner: TransactionRunner, clock: Clock, ids: IdGenerator) => new SubmitWagerTransaction(runner, clock, ids),
           inject: [TRANSACTION_RUNNER, CLOCK, ID_GENERATOR],
+        },
+        {
+          provide: WagerConsumer,
+          useFactory: (client: SQSClient, submit: SubmitWagerTransaction, metrics: Metrics, faults: FaultInjector) =>
+            new WagerConsumer(client, config, submit, metrics, faults, { enabled: config.roles.has("consumer") }),
+          inject: [SQS_CLIENT, SubmitWagerTransaction, METRICS, FAULT_INJECTOR],
         },
         {
           provide: OutboxPublisher,
