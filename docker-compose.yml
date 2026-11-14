@@ -1,3 +1,29 @@
+x-app-env: &app-env
+  DATABASE_URL: postgres://wagering:wagering@postgres:5432/wagering
+  SQS_ENDPOINT: http://sqs:4566
+  AWS_REGION: us-east-1
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  VISIBILITY_TIMEOUT_SECONDS: "30"
+  MAX_RECEIVE_COUNT: "5"
+
+x-app: &app
+  build: .
+  environment:
+    <<: *app-env
+    APP_ROLES: api,consumer,outbox,pending
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+  healthcheck:
+    test: ["CMD", "bun", "-e", "fetch('http://localhost:3000/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+    interval: 5s
+    timeout: 3s
+    retries: 10
+  # tempo para o consumer terminar a mensagem em andamento no SIGTERM
+  stop_grace_period: 25s
+  restart: unless-stopped
+
 services:
   postgres:
     image: postgres:18-alpine
@@ -17,3 +43,30 @@ services:
     image: ministackorg/ministack:1.5.40
     ports:
       - "4566:4566"
+
+  # aplica as migrations e cria as filas uma vez, antes das instâncias subirem
+  migrate:
+    build: .
+    environment: *app-env
+    command: ["sh", "-c", "bun run migrate:up && until bun run queues:create; do sleep 1; done"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      sqs:
+        condition: service_started
+    restart: "no"
+
+  app-1:
+    <<: *app
+    ports:
+      - "3001:3000"
+
+  app-2:
+    <<: *app
+    ports:
+      - "3002:3000"
+
+  app-3:
+    <<: *app
+    ports:
+      - "3003:3000"
