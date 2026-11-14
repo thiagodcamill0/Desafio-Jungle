@@ -59,7 +59,6 @@ export class OutboxMessage {
 
   markPublished(at: Date): void {
     this._publishedAt = at;
-    this._nextAttemptAt = undefined;
   }
 
   /** Falha ao publicar: incrementa attempts e agenda com backoff exponencial (2^n s, teto 60 s). */

@@ -2,11 +2,12 @@ import { defineConfig } from "@mikro-orm/postgresql";
 import { Migrator } from "@mikro-orm/migrations";
 import type { AppConfig } from "../config";
 import { Migration20261113000000 } from "./migrations/Migration20261113000000";
+import { persistenceSchemas } from "./schemas";
 
 export function mikroOrmOptions(config: Pick<AppConfig, "databaseUrl">) {
   return defineConfig({
     clientUrl: config.databaseUrl,
-    entities: [],
+    entities: persistenceSchemas,
     discovery: { warnWhenNoEntities: false },
     extensions: [Migrator],
     migrations: {
