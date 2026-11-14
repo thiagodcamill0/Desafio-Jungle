@@ -13,10 +13,7 @@ export interface InboxMessageState {
   processedAt?: Date;
 }
 
-/**
- * Registro persistente de que um consumidor já recebeu uma mensagem.
- * A chave `(consumerName, messageId)` é única no banco: a redelivery do SQS colide nela.
- */
+// Marca que o consumidor já recebeu a mensagem. (consumerName, messageId) é único no banco.
 export class InboxMessage {
   private constructor(
     readonly messageId: string,

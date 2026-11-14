@@ -1,6 +1,6 @@
 import { FailureCode } from "./failure-code";
 
-/** Violação de regra de domínio. Carrega um código estável para o provedor decidir o que fazer. */
+// regra de domínio violada; o code é o que o provedor usa para decidir
 export class DomainError extends Error {
   constructor(
     readonly code: FailureCode,
@@ -35,7 +35,7 @@ export class InvalidLedgerEntryError extends DomainError {
   }
 }
 
-/** Erro de programação (ex.: transicionar um estado terminal) — não é caminho de negócio. */
+// erro de programação, não de negócio (ex.: mexer em transação já finalizada)
 export class InvalidTransactionStateError extends Error {
   constructor(message: string) {
     super(message);

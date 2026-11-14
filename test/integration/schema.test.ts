@@ -36,7 +36,7 @@ async function insertTx(walletId: string, opts: { kind?: string; status?: string
   return id;
 }
 
-/** Saldo e ledger mudam juntos na mesma transação SQL, como o caso de uso fará. */
+// saldo e ledger juntos na mesma transação, como o caso de uso faz
 async function credit(walletId: string, txId: string, before: string, after: string, amount: string) {
   await db.tx(async (sql) => {
     await sql(

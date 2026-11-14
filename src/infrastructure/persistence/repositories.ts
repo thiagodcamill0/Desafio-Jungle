@@ -20,7 +20,7 @@ import type { WalletLedgerEntry } from "../../domain/wallet-ledger-entry";
 import { inboxMapper, ledgerMapper, moneyFromDb, outboxMapper, transactionMapper, walletMapper } from "./mappers";
 import { InboxSchema, LedgerEntrySchema, OutboxSchema, WagerTransactionSchema, WalletSchema } from "./schemas";
 
-// Sem identity map: cada leitura vai ao banco e o domínio é a única fonte de estado em memória.
+// sem identity map: toda leitura vai ao banco
 const fresh = { disableIdentityMap: true } as const;
 const forUpdate = { ...fresh, lockMode: LockMode.PESSIMISTIC_WRITE } as const;
 const skipLocked = { ...fresh, lockMode: LockMode.PESSIMISTIC_PARTIAL_WRITE } as const;

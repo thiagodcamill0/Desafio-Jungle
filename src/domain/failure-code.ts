@@ -1,17 +1,11 @@
-/**
- * Códigos estáveis e legíveis por máquina. O provedor decide pelo código, nunca pela mensagem:
- * - payload inválido → corrigir e reenviar;
- * - conflito → não reenviar o mesmo pedido;
- * - rejeição de negócio → terminal, desistir;
- * - transitório → reenviar com backoff.
- */
+// Códigos estáveis para o provedor decidir se corrige, desiste ou reenvia (ver ARCHITECTURE.md).
 export const FailureCode = {
   // payload inválido
   INVALID_PAYLOAD: "INVALID_PAYLOAD",
   INVALID_MONEY: "INVALID_MONEY",
   MISSING_IDEMPOTENCY_KEY: "MISSING_IDEMPOTENCY_KEY",
   KIND_NOT_ALLOWED: "KIND_NOT_ALLOWED",
-  // não encontrado (consultas) / wallet inexistente (submissão)
+  // não encontrado
   WALLET_NOT_FOUND: "WALLET_NOT_FOUND",
   TRANSACTION_NOT_FOUND: "TRANSACTION_NOT_FOUND",
   ROUTE_NOT_FOUND: "ROUTE_NOT_FOUND",
@@ -34,7 +28,7 @@ export const FailureCode = {
   DATABASE_UNAVAILABLE: "DATABASE_UNAVAILABLE",
   LOCK_TIMEOUT: "LOCK_TIMEOUT",
   QUEUE_UNAVAILABLE: "QUEUE_UNAVAILABLE",
-  // falha permanente de processamento (status FAILED, auditável)
+  // falha permanente (status FAILED)
   PROCESSING_FAILED: "PROCESSING_FAILED",
 } as const;
 

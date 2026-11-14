@@ -5,8 +5,7 @@ import { currentLogContext, runWithLogContext } from "./log-context";
 
 const MAX_CORRELATION_ID_LENGTH = 128;
 
-// Logs JSON; o contexto (correlationId, transactionId...) entra em toda linha via mixin.
-// Valores financeiros e payloads nunca saem no log.
+// Logs JSON com o contexto da requisição em toda linha. Valores e payloads não vão para o log.
 export function createLogger(level: string, destination?: DestinationStream): Logger {
   return pino(
     {

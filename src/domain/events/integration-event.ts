@@ -1,4 +1,3 @@
-/** Metadados de rastreio que o caso de uso fornece ao criar um evento. */
 export interface EventContext {
   eventId: string;
   correlationId: string;
@@ -11,7 +10,7 @@ export interface IntegrationEventProps<T> extends EventContext {
   data: T;
 }
 
-/** Envelope serializado — é isto que vai para o payload da outbox e para a fila. */
+// formato que vai para a outbox e para a fila
 export interface IntegrationEventJSON<T> {
   eventId: string;
   eventType: string;
@@ -23,11 +22,7 @@ export interface IntegrationEventJSON<T> {
   data: T;
 }
 
-/**
- * Base de todos os eventos de integração. `eventType` e `version` são declarados por cada
- * subclasse (no tipo), nunca passados como string solta por quem publica.
- * `data` só pode conter valores JSON (dinheiro como `MoneyProps`, nunca `Money`).
- */
+// Cada evento é uma subclasse com eventType e version fixos. data só leva valores JSON.
 export abstract class IntegrationEvent<T> {
   abstract readonly eventType: string;
   abstract readonly version: number;

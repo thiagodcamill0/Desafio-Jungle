@@ -11,8 +11,7 @@ export interface PendingReferenceWorkerOptions {
 
 const DEFAULTS: PendingReferenceWorkerOptions = { enabled: false, intervalMs: 1_000, batchSize: 20 };
 
-// De tempos em tempos pega transações PENDING_REFERENCE vencidas e tenta resolvê-las.
-// O claim usa SKIP LOCKED, então várias instâncias dividem o trabalho sem lock global.
+// Tenta de novo as transações que esperam a referência. Várias instâncias dividem o trabalho.
 export class PendingReferenceWorker extends IntervalWorker {
   private readonly logger = new Logger("PendingReferenceWorker");
   private readonly batchSize: number;

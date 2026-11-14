@@ -48,7 +48,7 @@ export class TransactionQueries {
 
 const walletNotFound = (walletId: string) => new NotFoundError(FailureCode.WALLET_NOT_FOUND, `Wallet ${walletId} not found`);
 
-// O cliente não deve depender do formato: é só base64url de um JSON com o seq.
+// cursor opaco: base64url do seq
 export function encodeCursor(seq: bigint): string {
   return Buffer.from(JSON.stringify({ s: seq.toString() })).toString("base64url");
 }

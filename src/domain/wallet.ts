@@ -28,11 +28,7 @@ export interface BalanceMovement {
   at: Date;
 }
 
-/**
- * Aggregate root. É o único ponto que altera saldo, e toda alteração devolve o lançamento
- * de ledger correspondente — "saldo sem ledger" é impossível por construção.
- * `version` começa em 1 e só incrementa quando o saldo muda.
- */
+// Único lugar que mexe no saldo; todo débito/crédito devolve o lançamento do ledger.
 export class Wallet {
   private constructor(
     readonly id: string,
@@ -62,7 +58,6 @@ export class Wallet {
     return { wallet, openingEntry };
   }
 
-  /** Reconstrução a partir da persistência — não revalida transições. */
   static rehydrate(state: WalletState): Wallet {
     return new Wallet(state.id, state.playerId, state.currency, state.balance, state.version, state.createdAt, state.updatedAt);
   }
@@ -104,7 +99,7 @@ export class Wallet {
     };
   }
 
-  /** Cria o lançamento antes de mutar: se a factory recusar, a wallet fica intacta. */
+  // cria o lançamento antes de mudar o saldo; se falhar, a wallet fica como estava
   private apply(direction: LedgerDirection, movement: BalanceMovement): WalletLedgerEntry {
     const balanceAfter =
       direction === LedgerDirection.Credit ? this._balance.add(movement.money) : this._balance.subtract(movement.money);

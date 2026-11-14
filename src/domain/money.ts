@@ -1,27 +1,23 @@
 import { CurrencyMismatchError, InvalidMoneyError } from "./errors";
 
-/** Contrato externo: valor sempre como string decimal com 2 casas. */
 export interface MoneyProps {
   amount: string;
   currency: string;
 }
 
-/** Até 17 dígitos inteiros + 2 decimais = cabe em NUMERIC(19,2). Sem sinal, sem expoente, sem espaços. */
+// até 17 dígitos inteiros e 2 casas: cabe em NUMERIC(19,2)
 const AMOUNT_PATTERN = /^(0|[1-9]\d{0,16})\.(\d{2})$/;
 const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 const SCALE = 100n;
 
-/**
- * Valor monetário imutável. Internamente guarda centavos em `bigint`: aritmética inteira e exata,
- * sem `number`/float em nenhum ponto. Entradas fora do formato são rejeitadas, nunca arredondadas.
- */
+// Guarda centavos em bigint. Entrada fora do formato é rejeitada, nunca arredondada.
 export class Money {
   private constructor(
     private readonly cents: bigint,
     readonly currency: string,
   ) {}
 
-  /** Aceita apenas valores não negativos — negativos não existem nos contratos de entrada. */
+  // só aceita valores não negativos
   static from(props: MoneyProps): Money {
     const { amount, currency } = props;
     if (typeof amount !== "string") throw new InvalidMoneyError("amount must be a decimal string");

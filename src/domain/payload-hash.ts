@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { MoneyProps } from "./money";
 
-/** Campos de negócio que entram no hash. Header, messageId, occurredAt e a própria key ficam de fora. */
+// só campos de negócio; header, messageId, occurredAt e a key ficam de fora
 export interface WagerPayloadFields {
   providerId: string;
   externalTransactionId: string;
@@ -14,7 +14,7 @@ export interface WagerPayloadFields {
   referenceExternalTransactionId?: string;
 }
 
-/** JSON canônico: chaves ordenadas recursivamente, `undefined` omitido, sem espaços. */
+// chaves ordenadas, sem espaços, undefined omitido
 export function canonicalJson(value: unknown): string {
   if (value === null) return "null";
   if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item ?? null)).join(",")}]`;
@@ -36,7 +36,6 @@ export function canonicalJson(value: unknown): string {
   }
 }
 
-/** SHA-256 (hex) do JSON canônico dos campos de negócio. */
 export function computePayloadHash(fields: WagerPayloadFields): string {
   const businessFields: WagerPayloadFields = {
     providerId: fields.providerId,

@@ -13,10 +13,7 @@ export interface OutboxMessageState {
 
 const MAX_RETRY_DELAY_MS = 60_000;
 
-/**
- * Evento gravado na mesma transação SQL da operação financeira e publicado depois do commit.
- * O id é o próprio eventId: uma republicação leva o mesmo id e o consumidor deduplica por ele.
- */
+// Evento esperando publicação. O id é o eventId, então republicar não gera duplicata nova.
 export class OutboxMessage {
   private constructor(
     readonly id: string,
@@ -29,7 +26,6 @@ export class OutboxMessage {
     private _publishedAt: Date | undefined,
   ) {}
 
-  /** `now` padrão = occurredAt do evento: pronto para publicar imediatamente. */
   static enqueue(event: IntegrationEvent<unknown>, now: Date = event.occurredAt): OutboxMessage {
     const payload = event.toJSON() as unknown as Record<string, unknown>;
     return new OutboxMessage(event.eventId, event.aggregateId, event.eventType, payload, event.occurredAt, 0, now, undefined);
@@ -61,7 +57,7 @@ export class OutboxMessage {
     this._publishedAt = at;
   }
 
-  /** Falha ao publicar: incrementa attempts e agenda com backoff exponencial (2^n s, teto 60 s). */
+  // backoff de 2^n segundos, no máximo 60
   scheduleRetry(now: Date): void {
     this._attempts += 1;
     const delay = Math.min(2 ** this._attempts * 1_000, MAX_RETRY_DELAY_MS);

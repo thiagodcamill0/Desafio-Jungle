@@ -2,13 +2,12 @@ import { SQL } from "bun";
 import { MikroORM } from "@mikro-orm/postgresql";
 import { mikroOrmOptions } from "../../src/infrastructure/persistence/mikro-orm.config";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Exec = (q: string, params?: unknown[]) => Promise<any[]>;
 
 export interface TestDatabase {
   url: string;
   sql: Exec;
-  /** Executa várias instruções na mesma transação SQL. */
+  // várias instruções na mesma transação
   tx<T>(fn: (sql: Exec) => Promise<T>): Promise<T>;
   migrateUp(): Promise<void>;
   migrateDown(): Promise<void>;
@@ -21,7 +20,7 @@ const adminUrl = () => {
   return url;
 };
 
-/** Cria um database isolado `wagering_test_<ts>_<rand>`, aplica as migrations e devolve um cliente SQL cru. */
+// banco descartável por arquivo de teste, já com as migrations
 export async function createTestDatabase(): Promise<TestDatabase> {
   const name = `wagering_test_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const admin = new SQL(adminUrl());

@@ -9,7 +9,7 @@ export async function createQueues(config: AppConfig): Promise<void> {
     region: config.awsRegion,
     credentials: { accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? "test", secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? "test" },
   });
-  // CreateQueue é idempotente quando os atributos são iguais; o redrive é aplicado depois, via SetQueueAttributes.
+  // pode rodar várias vezes; o redrive entra depois, com SetQueueAttributes
   const dlq = await client.send(new CreateQueueCommand({ QueueName: config.wagerDlqName, Attributes: FIFO }));
   const dlqAttrs = await client.send(new GetQueueAttributesCommand({ QueueUrl: dlq.QueueUrl, AttributeNames: ["QueueArn"] }));
   const main = await client.send(new CreateQueueCommand({ QueueName: config.wagerQueueName, Attributes: FIFO }));

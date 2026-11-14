@@ -10,8 +10,7 @@ export interface OutboxPublisherOptions {
 
 const DEFAULTS: OutboxPublisherOptions = { enabled: false, intervalMs: 500, batchSize: 50 };
 
-// Publica o que já foi commitado na outbox. Linhas travadas por outro publisher são puladas (SKIP LOCKED);
-// se o processo cair antes do commit, a linha volta a ficar pendente e é publicada de novo com o mesmo id.
+// Publica o que já foi commitado. Se cair antes do commit, outra instância republica com o mesmo id.
 export class OutboxPublisher extends IntervalWorker {
   private readonly logger = new Logger("OutboxPublisher");
   private readonly batchSize: number;

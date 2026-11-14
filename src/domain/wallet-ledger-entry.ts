@@ -19,10 +19,7 @@ export interface LedgerEntryState {
 
 export type CreateLedgerEntryProps = LedgerEntryState;
 
-/**
- * Lançamento imutável do ledger. Não há campos mutáveis nem métodos de transição:
- * a instância é congelada na construção. A aritmética é validada na factory.
- */
+// Lançamento do ledger: congelado na criação, a conta é validada no create.
 export class WalletLedgerEntry {
   private constructor(
     readonly id: string,
@@ -62,7 +59,6 @@ export class WalletLedgerEntry {
     );
   }
 
-  /** balanceBefore ± money === balanceAfter */
   isBalanced(): boolean {
     const expected =
       this.direction === LedgerDirection.Credit ? this.balanceBefore.add(this.money) : this.balanceBefore.subtract(this.money);

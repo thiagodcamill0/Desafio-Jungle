@@ -1,7 +1,7 @@
 import { Counter, Gauge, Histogram, Registry, collectDefaultMetrics } from "prom-client";
 import type { MetricName, Metrics } from "../../application/ports";
 
-// Registry próprio (não o global): várias instâncias do app no mesmo processo de teste não colidem.
+// registry próprio para vários apps no mesmo processo (testes) não colidirem
 export class PrometheusMetrics implements Metrics {
   readonly registry = new Registry();
   private readonly counters: Record<MetricName, Counter>;

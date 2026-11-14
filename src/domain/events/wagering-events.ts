@@ -13,7 +13,7 @@ export interface WagerTransactionEventData {
   walletId: string;
   kind: string;
   money: MoneyProps;
-  /** Saldo da wallet no momento da decisão. */
+  // saldo no momento da decisão
   balance: MoneyProps;
 }
 
@@ -32,11 +32,11 @@ export interface WalletBalanceChangedData {
   money: MoneyProps;
   balanceBefore: MoneyProps;
   balanceAfter: MoneyProps;
-  /** Permite ao consumidor ordenar eventos da mesma wallet. */
+  // para o consumidor ordenar eventos da mesma wallet
   walletVersion: number;
 }
 
-/** Aplicada (inclusive LOSS, que não move saldo). */
+// inclusive LOSS, que não move saldo
 export class WagerTransactionProcessed extends IntegrationEvent<WagerTransactionEventData> {
   readonly eventType = "WagerTransactionProcessed";
   readonly version = 1;
@@ -46,7 +46,6 @@ export class WagerTransactionProcessed extends IntegrationEvent<WagerTransaction
   }
 }
 
-/** Rejeitada por regra de negócio. */
 export class WagerTransactionRejected extends IntegrationEvent<WagerTransactionRejectedData> {
   readonly eventType = "WagerTransactionRejected";
   readonly version = 1;
@@ -57,7 +56,6 @@ export class WagerTransactionRejected extends IntegrationEvent<WagerTransactionR
   }
 }
 
-/** Aguardando a transação referenciada chegar. */
 export class WagerTransactionPendingReference extends IntegrationEvent<WagerTransactionPendingReferenceData> {
   readonly eventType = "WagerTransactionPendingReference";
   readonly version = 1;
@@ -73,7 +71,7 @@ export class WagerTransactionPendingReference extends IntegrationEvent<WagerTran
   }
 }
 
-/** Emitido somente quando o saldo muda — sempre a partir de um lançamento do ledger. */
+// só quando o saldo muda
 export class WalletBalanceChanged extends IntegrationEvent<WalletBalanceChangedData> {
   readonly eventType = "WalletBalanceChanged";
   readonly version = 1;

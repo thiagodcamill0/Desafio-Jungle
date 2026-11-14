@@ -1,14 +1,6 @@
 import { Migration } from "@mikro-orm/migrations";
 
-/**
- * Schema inicial. As invariantes financeiras ficam no banco, não só no código:
- * - saldo nunca negativo (CHECK) e uma wallet por player+moeda (UNIQUE);
- * - saldo da wallet == balance_after do último lançamento (constraint trigger DEFERRED, checada no commit);
- * - version incrementa exatamente quando o saldo muda (trigger);
- * - ledger append-only: UPDATE/DELETE/TRUNCATE recusados (trigger);
- * - no máximo um lançamento por transação por wallet e uma reversão por referência (índices únicos);
- * - transação em estado terminal é imutável e nenhuma transação é apagada (trigger).
- */
+// Schema inicial. As regras de dinheiro ficam no banco também, não só no código.
 export class Migration20261113000000 extends Migration {
   override up(): void {
     this.addSql(`
@@ -53,7 +45,7 @@ export class Migration20261113000000 extends Migration {
         constraint ck_decided_failure_code
           check (status not in ('REJECTED', 'FAILED') or failure_code is not null)
       );`);
-    // Uma referência só pode ser revertida uma vez, por REFUND ou por ROLLBACK (não os dois).
+    // uma reversão por referência, seja REFUND ou ROLLBACK
     this.addSql(`
       create unique index ux_single_reversal on wager_transactions (reference_transaction_id)
         where kind in ('REFUND', 'ROLLBACK') and status = 'PROCESSED';`);
@@ -106,7 +98,7 @@ export class Migration20261113000000 extends Migration {
       );`);
     this.addSql(`create index ix_outbox_due on outbox_messages (next_attempt_at) where published_at is null;`);
 
-    // ---- ledger append-only
+    // ledger só aceita insert
     this.addSql(`
       create function ledger_append_only() returns trigger language plpgsql as $$
       begin
@@ -119,7 +111,7 @@ export class Migration20261113000000 extends Migration {
       create trigger trg_ledger_no_truncate before truncate on wallet_ledger_entries
         for each statement execute function ledger_append_only();`);
 
-    // ---- transações: terminal é imutável, nada é apagado
+    // transação finalizada não muda e nenhuma é apagada
     this.addSql(`
       create function wager_transaction_guard() returns trigger language plpgsql as $$
       begin
@@ -135,7 +127,7 @@ export class Migration20261113000000 extends Migration {
       create trigger trg_terminal_immutable before update or delete on wager_transactions
         for each row execute function wager_transaction_guard();`);
 
-    // ---- wallet: version acompanha o saldo
+    // version sobe junto com o saldo
     this.addSql(`
       create function wallet_version_guard() returns trigger language plpgsql as $$
       begin
@@ -151,7 +143,7 @@ export class Migration20261113000000 extends Migration {
       create trigger trg_wallet_version before update on wallets
         for each row execute function wallet_version_guard();`);
 
-    // ---- saldo == último lançamento, verificado no commit (as duas escritas acontecem na mesma transação)
+    // saldo tem que bater com o último lançamento; checado no commit
     this.addSql(`
       create function wallet_matches_ledger() returns trigger language plpgsql as $$
       declare

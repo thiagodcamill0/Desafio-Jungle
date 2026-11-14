@@ -18,7 +18,7 @@ export class AllowAllProviderIdentity implements ProviderIdentityPort {
   async assertProvider(): Promise<void> {}
 }
 
-// substituído pelas métricas Prometheus na parte de observabilidade
+// métricas que não fazem nada, usadas nos testes
 export class NoopMetrics implements Metrics {
   inc(): void {}
   observe(): void {}

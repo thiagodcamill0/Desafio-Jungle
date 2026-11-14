@@ -40,8 +40,7 @@ export interface WagerConsumerOptions {
 const DEFAULTS: WagerConsumerOptions = { enabled: false, waitTimeSeconds: 10, shutdownGraceMs: 20_000 };
 const MAX_RETRY_DELAY_SECONDS = 60;
 
-// Lê a fila de entrada e chama o mesmo caso de uso do HTTP.
-// Ack (delete) só depois do commit; erro de negócio = ack, transitório = retry, permanente = DLQ.
+// Mesmo caso de uso do HTTP. Ack só depois do commit: negócio = ack, transitório = retry, permanente = DLQ.
 export class WagerConsumer {
   private readonly logger = new Logger("WagerConsumer");
   private readonly options: WagerConsumerOptions;

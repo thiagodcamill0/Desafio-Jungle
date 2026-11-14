@@ -20,7 +20,7 @@ export enum WagerTransactionStatus {
   Failed = "FAILED", // erro permanente de infraestrutura (terminal, auditável)
 }
 
-/** Tentativas do worker antes de rejeitar com REFERENCE_NOT_FOUND (~5 min com o backoff abaixo). */
+// ~5 min de espera pela referência
 export const MAX_REFERENCE_ATTEMPTS = 10;
 const FIRST_REFERENCE_ATTEMPT_DELAY_MS = 1_000;
 const MAX_REFERENCE_RETRY_DELAY_MS = 60_000;
@@ -40,7 +40,7 @@ export interface CreateWagerTransactionProps {
   gameId: string;
   kind: WagerTransactionKind;
   money: Money;
-  /** id no provedor — não o id interno */
+  // id do lado do provedor
   referenceExternalTransactionId?: string;
   createdAt: Date;
 }
@@ -50,18 +50,14 @@ export interface WagerTransactionState extends CreateWagerTransactionProps {
   referenceTransactionId?: string;
   failureCode?: FailureCode;
   processedAt?: Date;
-  /** Saldo da wallet no momento da decisão — devolvido nos replays. */
+  // saldo no momento da decisão, devolvido no replay
   observedBalance?: Money;
   referenceAttempts: number;
   nextReferenceAttemptAt?: Date;
 }
 
-/**
- * Transições válidas:
- *   PENDING           → PROCESSED | REJECTED | FAILED | PENDING_REFERENCE
- *   PENDING_REFERENCE → PROCESSED | REJECTED | FAILED  (e reagendamento via scheduleReferenceRetry)
- *   PROCESSED, REJECTED, FAILED → terminais; qualquer transição lança InvalidTransactionStateError.
- */
+// PENDING → PROCESSED | REJECTED | FAILED | PENDING_REFERENCE; PENDING_REFERENCE → PROCESSED | REJECTED | FAILED.
+// Os três finais não mudam mais.
 export class WagerTransaction {
   private constructor(
     readonly id: string,
@@ -86,7 +82,6 @@ export class WagerTransaction {
     private _nextReferenceAttemptAt: Date | undefined,
   ) {}
 
-  /** Nasce em PENDING. Valida o kind, o valor e a exigência de referência. */
   static create(props: CreateWagerTransactionProps): WagerTransaction {
     if (props.kind === WagerTransactionKind.Opening) {
       throw new DomainError(FailureCode.KIND_NOT_ALLOWED, "OPENING is internal and cannot be submitted");
@@ -96,7 +91,7 @@ export class WagerTransaction {
     return WagerTransaction.fromProps(props);
   }
 
-  /** Transação interna que registra o crédito de abertura da wallet. */
+  // crédito de abertura da wallet (interno)
   static createOpening(props: { id: string; walletId: string; playerId: string; money: Money; at: Date }): WagerTransaction {
     WagerTransaction.assertAmount(WagerTransactionKind.Opening, props.money);
     return WagerTransaction.fromProps({
@@ -115,7 +110,6 @@ export class WagerTransaction {
     });
   }
 
-  /** Reconstrução a partir da persistência — não revalida regras nem transições. */
   static rehydrate(s: WagerTransactionState): WagerTransaction {
     return new WagerTransaction(
       s.id,
@@ -163,8 +157,6 @@ export class WagerTransaction {
     return this._nextReferenceAttemptAt;
   }
 
-  // ---- transições
-
   markProcessed(referenceTransactionId: string | undefined, observedBalance: Money, at: Date): void {
     this.assertNotTerminal("markProcessed");
     this._status = WagerTransactionStatus.Processed;
@@ -182,7 +174,7 @@ export class WagerTransaction {
     this._nextReferenceAttemptAt = new Date(now.getTime() + FIRST_REFERENCE_ATTEMPT_DELAY_MS);
   }
 
-  /** Registra mais uma tentativa sem sucesso e agenda a próxima com backoff exponencial (teto 60s). */
+  // referência ainda não chegou: agenda a próxima tentativa
   scheduleReferenceRetry(now: Date): void {
     if (this._status !== WagerTransactionStatus.PendingReference) {
       throw new InvalidTransactionStateError(`scheduleReferenceRetry: transaction ${this.id} is ${this._status}`);
@@ -207,8 +199,6 @@ export class WagerTransaction {
     this._nextReferenceAttemptAt = undefined;
   }
 
-  // ---- consultas de domínio
-
   isTerminal(): boolean {
     return TERMINAL.has(this._status);
   }
@@ -221,7 +211,7 @@ export class WagerTransaction {
     return this.kind === WagerTransactionKind.Refund || this.kind === WagerTransactionKind.Rollback;
   }
 
-  /** Esta tentativa é a última permitida antes de rejeitar por referência inexistente. */
+  // esta é a última tentativa permitida
   referenceRetriesExhausted(): boolean {
     return this._referenceAttempts + 1 >= MAX_REFERENCE_ATTEMPTS;
   }
@@ -272,8 +262,6 @@ export class WagerTransaction {
     };
   }
 
-  // ---- internos
-
   private decide(observedBalance: Money, at: Date): void {
     this._observedBalance = observedBalance;
     this._processedAt = at;
@@ -321,7 +309,7 @@ export class WagerTransaction {
     }
   }
 
-  /** LOSS pode ser 0.00 (só registra o resultado); os demais movem saldo e exigem valor positivo. */
+  // LOSS aceita 0.00; o resto precisa ser positivo
   private static assertAmount(kind: WagerTransactionKind, money: Money): void {
     const valid = kind === WagerTransactionKind.Loss ? !money.isNegative() : money.isPositive();
     if (!valid) throw new InvalidMoneyError(`${kind} amount must be ${kind === WagerTransactionKind.Loss ? "non-negative" : "positive"}`);
