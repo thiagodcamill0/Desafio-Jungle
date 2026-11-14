@@ -1,3 +1,5 @@
+import { Logger } from "@nestjs/common";
+
 // Base dos workers periódicos: um tick por vez e parada limpa no shutdown.
 export abstract class IntervalWorker {
   private timer?: ReturnType<typeof setInterval>;
@@ -6,13 +8,14 @@ export abstract class IntervalWorker {
   protected constructor(
     private readonly enabled: boolean,
     private readonly intervalMs: number,
+    private readonly onError: (error: unknown) => void = logError(new.target.name),
   ) {}
 
   protected abstract work(): Promise<unknown>;
 
   onApplicationBootstrap(): void {
     if (!this.enabled) return;
-    this.timer = setInterval(() => void this.tick().catch(() => undefined), this.intervalMs);
+    this.timer = setInterval(() => void this.tick().catch(this.onError), this.intervalMs);
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -29,4 +32,9 @@ export abstract class IntervalWorker {
   }
 
   abstract tick(): Promise<unknown>;
+}
+
+function logError(name: string): (error: unknown) => void {
+  const logger = new Logger(name);
+  return (error) => logger.error(`tick failed: ${error instanceof Error ? error.message : String(error)}`);
 }
