@@ -1,4 +1,4 @@
-import type { Clock, IdGenerator, ProviderIdentityPort } from "../application/ports";
+import type { Clock, IdGenerator, Metrics, ProviderIdentityPort } from "../application/ports";
 
 export class SystemClock implements Clock {
   now(): Date {
@@ -16,4 +16,11 @@ export class UuidV7Generator implements IdGenerator {
 // Sem autenticação por enquanto: aceita qualquer provedor. Ver ARCHITECTURE.md.
 export class AllowAllProviderIdentity implements ProviderIdentityPort {
   async assertProvider(): Promise<void> {}
+}
+
+// substituído pelas métricas Prometheus na parte de observabilidade
+export class NoopMetrics implements Metrics {
+  inc(): void {}
+  observe(): void {}
+  setOutboxLag(): void {}
 }

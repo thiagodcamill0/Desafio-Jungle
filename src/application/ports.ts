@@ -33,7 +33,8 @@ export interface LedgerPage {
 
 export interface LedgerRepository {
   insert(entry: WalletLedgerEntry): Promise<void>;
-  listByWallet(walletId: string, page: { afterSeq?: bigint; limit: number }): Promise<LedgerPage>;
+  // mais recente primeiro; beforeSeq é o cursor da página anterior
+  listByWallet(walletId: string, page: { beforeSeq?: bigint; limit: number }): Promise<LedgerPage>;
   computeBalance(walletId: string, currency: string): Promise<{ balance: Money; count: number }>;
 }
 

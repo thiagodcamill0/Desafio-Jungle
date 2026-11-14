@@ -109,9 +109,9 @@ class MikroOrmLedgerRepository implements LedgerRepository {
   }
 
   // busca um a mais para saber se existe próxima página
-  async listByWallet(walletId: string, page: { afterSeq?: bigint; limit: number }): Promise<LedgerPage> {
-    const where = page.afterSeq === undefined ? { walletId } : { walletId, seq: { $gt: page.afterSeq } };
-    const rows = await this.em.find(LedgerEntrySchema, where, { ...fresh, orderBy: { seq: "asc" }, limit: page.limit + 1 });
+  async listByWallet(walletId: string, page: { beforeSeq?: bigint; limit: number }): Promise<LedgerPage> {
+    const where = page.beforeSeq === undefined ? { walletId } : { walletId, seq: { $lt: page.beforeSeq } };
+    const rows = await this.em.find(LedgerEntrySchema, where, { ...fresh, orderBy: { seq: "desc" }, limit: page.limit + 1 });
     const visible = rows.slice(0, page.limit);
     const hasMore = rows.length > page.limit;
     return { entries: visible.map(ledgerMapper.toDomain), lastSeq: hasMore ? BigInt(visible.at(-1)!.seq!) : undefined };

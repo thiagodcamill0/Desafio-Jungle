@@ -198,16 +198,16 @@ describe("transactions", () => {
 });
 
 describe("ledger", () => {
-  test("listByWallet pagina por seq e computeBalance soma os lançamentos", async () => {
+  test("listByWallet pagina do mais recente ao mais antigo e computeBalance soma os lançamentos", async () => {
     const wallet = await createWallet();
     for (const amount of ["1.00", "2.00", "3.00"]) {
       await runner.run(async (r) => void (await credit(r, (await r.wallets.lockById(wallet.id))!, amount)));
     }
     const first = await runner.run((r) => r.ledger.listByWallet(wallet.id, { limit: 2 }));
-    expect(first.entries.map((e) => e.money.amount)).toEqual(["1.00", "2.00"]);
+    expect(first.entries.map((e) => e.money.amount)).toEqual(["3.00", "2.00"]);
     expect(first.lastSeq).toBeDefined();
-    const second = await runner.run((r) => r.ledger.listByWallet(wallet.id, { afterSeq: first.lastSeq, limit: 2 }));
-    expect(second.entries.map((e) => e.money.amount)).toEqual(["3.00"]);
+    const second = await runner.run((r) => r.ledger.listByWallet(wallet.id, { beforeSeq: first.lastSeq, limit: 2 }));
+    expect(second.entries.map((e) => e.money.amount)).toEqual(["1.00"]);
     expect(second.lastSeq).toBeUndefined();
 
     const computed = await runner.run((r) => r.ledger.computeBalance(wallet.id, "BRL"));

@@ -1,9 +1,11 @@
-import { Body, Controller, Headers, Inject, Post, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Res, UseGuards } from "@nestjs/common";
 import { ValidationError } from "../../application/errors";
+import { TransactionQueries } from "../../application/queries";
 import { SubmitWagerTransaction, type SubmitResult } from "../../application/submit-wager-transaction";
+import type { TransactionView } from "../../application/views";
 import { FailureCode } from "../../domain/failure-code";
 import { WagerTransactionStatus } from "../../domain/wager-transaction";
-import { parseInput, wagerBody } from "./dto";
+import { parseInput, uuidParam, wagerBody } from "./dto";
 import { ProviderAuthGuard } from "./provider-auth.guard";
 
 interface JsonResponse {
@@ -20,7 +22,15 @@ const STATUS_BY_RESULT: Record<string, number> = {
 @Controller("wagering")
 @UseGuards(ProviderAuthGuard)
 export class WageringController {
-  constructor(@Inject(SubmitWagerTransaction) private readonly submitWager: SubmitWagerTransaction) {}
+  constructor(
+    @Inject(SubmitWagerTransaction) private readonly submitWager: SubmitWagerTransaction,
+    @Inject(TransactionQueries) private readonly queries: TransactionQueries,
+  ) {}
+
+  @Get("transactions/:transactionId")
+  get(@Param("transactionId") transactionId: string): Promise<TransactionView> {
+    return this.queries.getById(parseInput(uuidParam, transactionId));
+  }
 
   @Post("transactions")
   async submit(
@@ -40,5 +50,16 @@ export class WageringController {
       return;
     }
     res.status(status).json(result);
+  }
+}
+
+@Controller("providers")
+@UseGuards(ProviderAuthGuard)
+export class ProviderTransactionsController {
+  constructor(@Inject(TransactionQueries) private readonly queries: TransactionQueries) {}
+
+  @Get(":providerId/wagering/transactions/:externalTransactionId")
+  get(@Param("providerId") providerId: string, @Param("externalTransactionId") externalTransactionId: string): Promise<TransactionView> {
+    return this.queries.getByExternalId(providerId, externalTransactionId);
   }
 }
