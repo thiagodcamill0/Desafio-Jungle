@@ -42,3 +42,10 @@ export class InvalidTransactionStateError extends Error {
     this.name = "InvalidTransactionStateError";
   }
 }
+
+// o saldo passaria do maior valor que cabe em NUMERIC(19,2)
+export class BalanceLimitExceededError extends DomainError {
+  constructor(message = "Balance limit exceeded") {
+    super(FailureCode.BALANCE_LIMIT_EXCEEDED, message);
+  }
+}

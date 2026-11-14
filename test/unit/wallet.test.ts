@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Money } from "../../src/domain/money";
 import { Wallet } from "../../src/domain/wallet";
 import { LedgerDirection, WalletLedgerEntry } from "../../src/domain/wallet-ledger-entry";
-import { CurrencyMismatchError, InsufficientFundsError, InvalidLedgerEntryError, InvalidMoneyError } from "../../src/domain/errors";
+import { BalanceLimitExceededError, CurrencyMismatchError, InsufficientFundsError, InvalidLedgerEntryError, InvalidMoneyError } from "../../src/domain/errors";
 
 const brl = (amount: string) => Money.from({ amount, currency: "BRL" });
 const T0 = new Date("2026-11-13T10:00:00.000Z");
@@ -138,5 +138,20 @@ describe("WalletLedgerEntry", () => {
   test("rehydrate reconstrói sem revalidar", () => {
     const state = { ...base, direction: LedgerDirection.Credit, money: brl("1.00"), balanceBefore: brl("0.00"), balanceAfter: brl("1.00") };
     expect(WalletLedgerEntry.rehydrate(state).toState()).toEqual(state);
+  });
+});
+
+describe("limite de saldo", () => {
+  test("crédito que passaria de 99999999999999999.99 é recusado e a wallet fica intacta", () => {
+    const { wallet } = openWith("99999999999999999.00");
+    expect(() => wallet.credit(move(brl("1.00")))).toThrow(BalanceLimitExceededError);
+    expect(wallet.balance.amount).toBe("99999999999999999.00");
+    expect(wallet.version).toBe(1);
+  });
+
+  test("crédito que chega exatamente no limite é aceito", () => {
+    const { wallet } = openWith("99999999999999999.00");
+    wallet.credit(move(brl("0.99")));
+    expect(wallet.balance.amount).toBe("99999999999999999.99");
   });
 });

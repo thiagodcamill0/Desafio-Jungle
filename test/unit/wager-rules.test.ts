@@ -176,3 +176,14 @@ describe("validateReference", () => {
     expect(validateReference(reversal(WagerTransactionKind.Rollback), ref(WagerTransactionKind.Bet), true)).toBe("REFERENCE_ALREADY_REVERSED");
   });
 });
+
+describe("limite de saldo nas regras", () => {
+  test("WIN que estouraria o limite → REJECTED BALANCE_LIMIT_EXCEEDED, sem lançamento", () => {
+    const w = wallet("99999999999999999.00");
+    const win = tx(WagerTransactionKind.Win, "5.00");
+    const { entry } = applyWager({ wallet: w, tx: win, ids, now: NOW });
+    expect(entry).toBeUndefined();
+    expect(win.failureCode).toBe("BALANCE_LIMIT_EXCEEDED");
+    expect(w.balance.amount).toBe("99999999999999999.00");
+  });
+});

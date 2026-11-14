@@ -1,4 +1,4 @@
-import { CurrencyMismatchError, InsufficientFundsError, InvalidMoneyError } from "./errors";
+import { BalanceLimitExceededError, CurrencyMismatchError, InsufficientFundsError, InvalidMoneyError } from "./errors";
 import { Money } from "./money";
 import { LedgerDirection, WalletLedgerEntry } from "./wallet-ledger-entry";
 
@@ -27,6 +27,8 @@ export interface BalanceMovement {
   entryId: string;
   at: Date;
 }
+
+const MAX_BALANCE = "99999999999999999.99";
 
 // Único lugar que mexe no saldo; todo débito/crédito devolve o lançamento do ledger.
 export class Wallet {
@@ -84,6 +86,10 @@ export class Wallet {
 
   credit(movement: BalanceMovement): WalletLedgerEntry {
     this.assertMovable(movement.money);
+    const maxBalance = Money.from({ amount: MAX_BALANCE, currency: this.currency });
+    if (maxBalance.isLessThan(this._balance.add(movement.money))) {
+      throw new BalanceLimitExceededError(`Credit of ${movement.money} would exceed the maximum balance`);
+    }
     return this.apply(LedgerDirection.Credit, movement);
   }
 

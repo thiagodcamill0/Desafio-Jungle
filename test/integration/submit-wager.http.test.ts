@@ -208,3 +208,13 @@ describe("entradas que não podem virar 500/503", () => {
     }
   });
 });
+
+describe("limite de saldo", () => {
+  test("WIN que passaria do NUMERIC(19,2) → 422 BALANCE_LIMIT_EXCEEDED (não 500)", async () => {
+    const w = await openWallet(t.baseUrl, "99999999999999999.00");
+    const res = await postWager(t.baseUrl, wager({ ...w, kind: "WIN", amount: "1.00" }));
+    expect(res.status).toBe(422);
+    expect(res.body).toMatchObject({ code: "BALANCE_LIMIT_EXCEEDED", status: "REJECTED", balance: { amount: "99999999999999999.00" } });
+    await assertLedgerMatchesBalance(t.sql, w.walletId);
+  });
+});

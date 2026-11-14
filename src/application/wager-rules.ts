@@ -1,4 +1,4 @@
-import { InsufficientFundsError } from "../domain/errors";
+import { BalanceLimitExceededError, InsufficientFundsError } from "../domain/errors";
 import { FailureCode } from "../domain/failure-code";
 import { WagerTransactionKind, WagerTransactionStatus, type WagerTransaction } from "../domain/wager-transaction";
 import type { Wallet } from "../domain/wallet";
@@ -38,6 +38,10 @@ export function applyWager({ wallet, tx, reference, ids, now }: ApplyWagerParams
     tx.markProcessed(reference?.id, wallet.balance, now);
     return { entry };
   } catch (error) {
+    if (error instanceof BalanceLimitExceededError) {
+      tx.reject(FailureCode.BALANCE_LIMIT_EXCEEDED, wallet.balance, now);
+      return {};
+    }
     if (!(error instanceof InsufficientFundsError)) throw error;
     const code = tx.kind === WagerTransactionKind.Bet ? FailureCode.INSUFFICIENT_FUNDS : FailureCode.REVERSAL_INSUFFICIENT_FUNDS;
     tx.reject(code, wallet.balance, now);
