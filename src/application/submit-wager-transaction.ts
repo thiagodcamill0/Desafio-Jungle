@@ -16,7 +16,7 @@ import type { Wallet } from "../domain/wallet";
 import type { WalletLedgerEntry } from "../domain/wallet-ledger-entry";
 import { ConflictError, InboxPayloadMismatchError, UniqueViolationError, ValidationError } from "./errors";
 import type { Clock, IdGenerator, Repositories, TransactionRunner } from "./ports";
-import { applyWager } from "./wager-rules";
+import { applyWager, validateReference, walletMismatch } from "./wager-rules";
 
 export type SubmitWagerCommand = WagerPayloadFields & { idempotencyKey: string };
 
@@ -36,6 +36,9 @@ export interface SubmitResult {
 export type SubmitOutcome = SubmitResult | { duplicateInbox: true };
 
 const KINDS = new Set<string>(Object.values(WagerTransactionKind));
+const RETRYABLE_CONSTRAINTS = new Set(["ux_wager_idempotency_key", "ux_single_reversal"]);
+const MISSING_REFERENCE = Symbol("missing-reference");
+type Evaluation = { entry?: WalletLedgerEntry } | typeof MISSING_REFERENCE;
 
 // Caso de uso único para HTTP, SQS e worker de pendentes.
 export class SubmitWagerTransaction {
@@ -56,16 +59,48 @@ export class SubmitWagerTransaction {
       if (error.constraint === "ux_wager_provider_external") {
         throw new ConflictError(FailureCode.EXTERNAL_TRANSACTION_ID_REUSED, `${cmd.providerId}/${cmd.externalTransactionId} was already used with another idempotency key`);
       }
-      // outra requisição gravou a mesma key: a segunda tentativa vira replay
-      if (error.constraint === "ux_wager_idempotency_key") {
+      // outra requisição ganhou a corrida: na segunda tentativa vira replay ou REFERENCE_ALREADY_REVERSED
+      if (RETRYABLE_CONSTRAINTS.has(error.constraint)) {
         return this.runner.run((repos) => this.submit(repos, this.newTransaction(cmd, payloadHash), opts));
       }
       throw error;
     }
   }
 
-  async resolvePending(_transactionId: string, _correlationId: string): Promise<SubmitResult | null> {
-    throw new Error("resolvePending: not implemented yet");
+  // Chamado pelo worker: tenta de novo uma transação que esperava a referência.
+  async resolvePending(transactionId: string, correlationId: string): Promise<SubmitResult | null> {
+    const attempt = () => this.runner.run((repos) => this.resolve(repos, transactionId, correlationId));
+    try {
+      return await attempt();
+    } catch (error) {
+      if (error instanceof UniqueViolationError && error.constraint === "ux_single_reversal") return attempt();
+      throw error;
+    }
+  }
+
+  private async resolve(repos: Repositories, transactionId: string, correlationId: string): Promise<SubmitResult | null> {
+    const now = this.clock.now();
+    const snapshot = await repos.transactions.findById(transactionId);
+    if (!snapshot || snapshot.status !== WagerTransactionStatus.PendingReference) return null;
+
+    // mesma ordem de lock do submit: wallet primeiro, depois a transação
+    const wallet = await repos.wallets.lockById(snapshot.walletId);
+    const tx = await repos.transactions.lockById(transactionId);
+    if (!wallet || !tx || tx.status !== WagerTransactionStatus.PendingReference) return null;
+    if (tx.nextReferenceAttemptAt && tx.nextReferenceAttemptAt > now) return null;
+
+    const outcome = await this.evaluate(repos, wallet, tx, now);
+    if (outcome === MISSING_REFERENCE) {
+      if (!tx.referenceRetriesExhausted()) {
+        tx.scheduleReferenceRetry(now);
+        await repos.transactions.save(tx);
+        return toResult(tx, false);
+      }
+      tx.reject(FailureCode.REFERENCE_NOT_FOUND, wallet.balance, now);
+    }
+    await repos.transactions.save(tx);
+    await this.persistOutcome(repos, wallet, tx, outcome === MISSING_REFERENCE ? undefined : outcome.entry, { correlationId }, now);
+    return toResult(tx, false);
   }
 
   private async submit(repos: Repositories, tx: WagerTransaction, opts: SubmitOptions): Promise<SubmitOutcome> {
@@ -102,18 +137,48 @@ export class SubmitWagerTransaction {
   }
 
   private async decide(repos: Repositories, wallet: Wallet, tx: WagerTransaction, opts: SubmitOptions, now: Date): Promise<SubmitResult> {
-    if (tx.requiresReference() || tx.referenceExternalTransactionId !== undefined) {
-      throw new Error("reference resolution: not implemented yet");
-    }
-    const { entry } = applyWager({ wallet, tx, ids: this.ids, now });
+    const outcome = await this.evaluate(repos, wallet, tx, now);
+    if (outcome === MISSING_REFERENCE) tx.markPendingReference(wallet.balance, now);
 
     await repos.transactions.insert(tx);
+    await this.persistOutcome(repos, wallet, tx, outcome === MISSING_REFERENCE ? undefined : outcome.entry, opts, now);
+    return toResult(tx, false);
+  }
+
+  // Núcleo comum ao submit e ao worker: resolve a referência (se houver) e decide a transação.
+  private async evaluate(repos: Repositories, wallet: Wallet, tx: WagerTransaction, now: Date): Promise<Evaluation> {
+    const mismatch = walletMismatch(wallet, tx);
+    if (mismatch) {
+      tx.reject(mismatch, wallet.balance, now);
+      return {};
+    }
+    if (tx.referenceExternalTransactionId === undefined) return applyWager({ wallet, tx, ids: this.ids, now });
+
+    const reference = await repos.transactions.findByExternalId(tx.providerId, tx.referenceExternalTransactionId);
+    if (!reference || reference.status === WagerTransactionStatus.PendingReference) return MISSING_REFERENCE;
+
+    const alreadyReversed = tx.requiresReference() && (await repos.transactions.findProcessedReversalOf(reference.id)) !== null;
+    const problem = validateReference(tx, reference, alreadyReversed);
+    if (problem) {
+      tx.reject(problem, wallet.balance, now);
+      return {};
+    }
+    return applyWager({ wallet, tx, reference, ids: this.ids, now });
+  }
+
+  private async persistOutcome(
+    repos: Repositories,
+    wallet: Wallet,
+    tx: WagerTransaction,
+    entry: WalletLedgerEntry | undefined,
+    opts: SubmitOptions,
+    now: Date,
+  ): Promise<void> {
     if (entry) {
       await repos.ledger.insert(entry);
       await repos.wallets.save(wallet);
     }
     await this.enqueueEvents(repos, wallet, tx, entry, opts, now);
-    return toResult(tx, false);
   }
 
   private async enqueueEvents(

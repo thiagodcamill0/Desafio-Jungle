@@ -11,6 +11,7 @@ import { HealthController } from "./infrastructure/observability/health.controll
 import { mikroOrmOptions } from "./infrastructure/persistence/mikro-orm.config";
 import { MikroOrmTransactionRunner } from "./infrastructure/persistence/transaction-runner";
 import { AllowAllProviderIdentity, SystemClock, UuidV7Generator } from "./infrastructure/system";
+import { PendingReferenceWorker } from "./infrastructure/workers/pending-reference-worker";
 import { HttpErrorFilter } from "./interface/http/error-mapping";
 import { ProviderAuthGuard } from "./interface/http/provider-auth.guard";
 import { WageringController } from "./interface/http/wagering.controller";
@@ -42,6 +43,12 @@ export class AppModule {
           provide: SubmitWagerTransaction,
           useFactory: (runner: TransactionRunner, clock: Clock, ids: IdGenerator) => new SubmitWagerTransaction(runner, clock, ids),
           inject: [TRANSACTION_RUNNER, CLOCK, ID_GENERATOR],
+        },
+        {
+          provide: PendingReferenceWorker,
+          useFactory: (runner: TransactionRunner, submit: SubmitWagerTransaction, clock: Clock) =>
+            new PendingReferenceWorker(runner, submit, clock, { enabled: config.roles.has("pending") }),
+          inject: [TRANSACTION_RUNNER, SubmitWagerTransaction, CLOCK],
         },
         { provide: WalletQueries, useFactory: (runner: TransactionRunner) => new WalletQueries(runner), inject: [TRANSACTION_RUNNER] },
         ProviderAuthGuard,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyWager } from "../../src/application/wager-rules";
+import { applyWager, validateReference } from "../../src/application/wager-rules";
 import { Money } from "../../src/domain/money";
 import { WagerTransaction, WagerTransactionKind, WagerTransactionStatus } from "../../src/domain/wager-transaction";
 import { Wallet } from "../../src/domain/wallet";
@@ -104,5 +104,75 @@ describe("applyWager", () => {
     expect(entry).toBeUndefined();
     expect(rollback.failureCode).toBe("REVERSAL_INSUFFICIENT_FUNDS");
     expect(w.balance.amount).toBe("5.00");
+  });
+});
+
+describe("validateReference", () => {
+  const ref = (kind: WagerTransactionKind, amount = "10.00", overrides: Partial<{ roundId: string; playerId: string; currency: string }> = {}) => {
+    const r = WagerTransaction.create({
+      ...tx(WagerTransactionKind.Win, amount, { currency: overrides.currency, playerId: overrides.playerId }).toState(),
+      roundId: overrides.roundId ?? "r1",
+      kind,
+      referenceExternalTransactionId: kind === WagerTransactionKind.Rollback || kind === WagerTransactionKind.Refund ? "x" : undefined,
+    });
+    r.markProcessed(undefined, money("0.00", overrides.currency), NOW);
+    return r;
+  };
+  const reversal = (kind: WagerTransactionKind, amount = "10.00") =>
+    WagerTransaction.create({ ...tx(WagerTransactionKind.Win, amount).toState(), kind, referenceExternalTransactionId: "ref" });
+
+  test("REFUND de BET processada, mesmo valor → válido", () => {
+    expect(validateReference(reversal(WagerTransactionKind.Refund), ref(WagerTransactionKind.Bet), false)).toBeNull();
+  });
+
+  test("rodada diferente → REFERENCE_MISMATCH", () => {
+    expect(validateReference(reversal(WagerTransactionKind.Refund), ref(WagerTransactionKind.Bet, "10.00", { roundId: "r2" }), false)).toBe("REFERENCE_MISMATCH");
+  });
+
+  test("player diferente → REFERENCE_MISMATCH", () => {
+    expect(validateReference(reversal(WagerTransactionKind.Refund), ref(WagerTransactionKind.Bet, "10.00", { playerId: "p2" }), false)).toBe("REFERENCE_MISMATCH");
+  });
+
+  test("moeda diferente → REFERENCE_MISMATCH", () => {
+    expect(validateReference(reversal(WagerTransactionKind.Refund), ref(WagerTransactionKind.Bet, "10.00", { currency: "USD" }), false)).toBe("REFERENCE_MISMATCH");
+  });
+
+  test("REFUND de WIN → REFERENCE_KIND_NOT_ALLOWED", () => {
+    expect(validateReference(reversal(WagerTransactionKind.Refund), ref(WagerTransactionKind.Win), false)).toBe("REFERENCE_KIND_NOT_ALLOWED");
+  });
+
+  test("ROLLBACK de LOSS ou de ROLLBACK → REFERENCE_KIND_NOT_ALLOWED", () => {
+    expect(validateReference(reversal(WagerTransactionKind.Rollback), ref(WagerTransactionKind.Loss), false)).toBe("REFERENCE_KIND_NOT_ALLOWED");
+    expect(validateReference(reversal(WagerTransactionKind.Rollback), ref(WagerTransactionKind.Rollback), false)).toBe("REFERENCE_KIND_NOT_ALLOWED");
+  });
+
+  test("ROLLBACK de BET, WIN ou REFUND → válido", () => {
+    for (const kind of [WagerTransactionKind.Bet, WagerTransactionKind.Win, WagerTransactionKind.Refund]) {
+      expect(validateReference(reversal(WagerTransactionKind.Rollback), ref(kind), false)).toBeNull();
+    }
+  });
+
+  test("WIN com referência a algo que não é BET → REFERENCE_KIND_NOT_ALLOWED", () => {
+    const win = WagerTransaction.create({ ...tx(WagerTransactionKind.Win, "50.00").toState(), referenceExternalTransactionId: "ref" });
+    expect(validateReference(win, ref(WagerTransactionKind.Win), false)).toBe("REFERENCE_KIND_NOT_ALLOWED");
+  });
+
+  test("WIN não compara valor com a BET", () => {
+    const win = WagerTransaction.create({ ...tx(WagerTransactionKind.Win, "50.00").toState(), referenceExternalTransactionId: "ref" });
+    expect(validateReference(win, ref(WagerTransactionKind.Bet, "10.00"), false)).toBeNull();
+  });
+
+  test("referência não processada → REFERENCE_NOT_PROCESSED", () => {
+    const rejected = tx(WagerTransactionKind.Bet, "10.00");
+    rejected.reject("INSUFFICIENT_FUNDS", money("0.00"), NOW);
+    expect(validateReference(reversal(WagerTransactionKind.Refund), rejected, false)).toBe("REFERENCE_NOT_PROCESSED");
+  });
+
+  test("valor diferente → REFERENCE_AMOUNT_MISMATCH", () => {
+    expect(validateReference(reversal(WagerTransactionKind.Refund, "9.99"), ref(WagerTransactionKind.Bet, "10.00"), false)).toBe("REFERENCE_AMOUNT_MISMATCH");
+  });
+
+  test("referência já revertida → REFERENCE_ALREADY_REVERSED", () => {
+    expect(validateReference(reversal(WagerTransactionKind.Rollback), ref(WagerTransactionKind.Bet), true)).toBe("REFERENCE_ALREADY_REVERSED");
   });
 });
