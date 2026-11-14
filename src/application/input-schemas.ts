@@ -8,7 +8,14 @@ import { ValidationError } from "./errors";
 // amount e currency passam crus: quem valida formato de dinheiro é o Money (INVALID_MONEY)
 export const moneyInput = z.object({ amount: z.unknown(), currency: z.unknown() }).transform((m) => m as MoneyProps);
 
-export const text = z.string().trim().min(1);
+// limite e NUL barrados aqui: o Postgres recusa NUL e índices únicos não aceitam strings enormes
+export const MAX_TEXT_LENGTH = 255;
+export const text = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_TEXT_LENGTH)
+  .refine((value) => !value.includes("\u0000"), "must not contain NUL characters");
 
 // kind segue como texto: o caso de uso distingue kind desconhecido (INVALID_PAYLOAD) de OPENING (KIND_NOT_ALLOWED)
 export const wagerFields = z.object({

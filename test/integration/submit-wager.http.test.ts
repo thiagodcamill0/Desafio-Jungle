@@ -181,3 +181,30 @@ describe("POST /wagering/transactions", () => {
     await assertLedgerMatchesBalance(t.sql, w.walletId);
   });
 });
+
+describe("entradas que não podem virar 500/503", () => {
+  test("byte NUL em campo de texto → 400 INVALID_PAYLOAD (não 503)", async () => {
+    const w = await openWallet(t.baseUrl, "10.00");
+    const res = await postWager(t.baseUrl, wager({ ...w, roundId: "round\u0000x" }));
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_PAYLOAD");
+  });
+
+  test("Idempotency-Key ou externalTransactionId gigante → 400 INVALID_PAYLOAD (não 500)", async () => {
+    const w = await openWallet(t.baseUrl, "10.00");
+    const longKey = await postWager(t.baseUrl, { ...wager(w), idempotencyKey: "k".repeat(3_000) });
+    expect(longKey.status).toBe(400);
+    expect(longKey.body.code).toBe("INVALID_PAYLOAD");
+    const longExt = await postWager(t.baseUrl, wager({ ...w, externalTransactionId: "e".repeat(3_000) }));
+    expect(longExt.status).toBe(400);
+    expect(longExt.body.code).toBe("INVALID_PAYLOAD");
+  });
+
+  test("parâmetros da rota de provider com NUL ou gigantes → 400", async () => {
+    for (const path of ["a%00b/wagering/transactions/x", `p/wagering/transactions/${"x".repeat(3_000)}`]) {
+      const res = await fetch(`${t.baseUrl}/providers/${path}`);
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { code: string }).code).toBe("INVALID_PAYLOAD");
+    }
+  });
+});

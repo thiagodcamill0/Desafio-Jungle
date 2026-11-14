@@ -48,6 +48,8 @@ export class TransactionQueries {
 
 const walletNotFound = (walletId: string) => new NotFoundError(FailureCode.WALLET_NOT_FOUND, `Wallet ${walletId} not found`);
 
+const MAX_SEQ = 9_223_372_036_854_775_807n;
+
 // cursor opaco: base64url do seq
 export function encodeCursor(seq: bigint): string {
   return Buffer.from(JSON.stringify({ s: seq.toString() })).toString("base64url");
@@ -56,7 +58,7 @@ export function encodeCursor(seq: bigint): string {
 export function decodeCursor(cursor: string): bigint {
   try {
     const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as { s?: unknown };
-    if (typeof parsed.s === "string" && /^\d{1,19}$/.test(parsed.s)) return BigInt(parsed.s);
+    if (typeof parsed.s === "string" && /^\d{1,19}$/.test(parsed.s) && BigInt(parsed.s) <= MAX_SEQ) return BigInt(parsed.s);
   } catch {
     // cai no erro abaixo
   }

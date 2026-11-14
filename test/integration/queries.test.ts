@@ -163,3 +163,13 @@ describe("reconciliação", () => {
     expect(res.body.code).toBe("WALLET_NOT_FOUND");
   });
 });
+
+describe("cursor fora do intervalo", () => {
+  test("seq acima do bigint → 400 INVALID_PAYLOAD (não 500)", async () => {
+    const w = await openWallet(t.baseUrl, "1.00");
+    const cursor = Buffer.from(JSON.stringify({ s: "9999999999999999999" })).toString("base64url");
+    const res = await getJson(`${t.baseUrl}/wallets/${w.walletId}/ledger?cursor=${cursor}`);
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_PAYLOAD");
+  });
+});

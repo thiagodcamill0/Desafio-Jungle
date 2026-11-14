@@ -38,7 +38,9 @@ export function translateDatabaseError(error: unknown): unknown {
   const code = sqlState(error);
   if (code === "23505") return new UniqueViolationError(String((error as { constraint?: string }).constraint ?? "unknown"), error);
   if (code && LOCK_CODES.has(code)) return new TransientInfraError(FailureCode.LOCK_TIMEOUT, "Timed out waiting for a row lock", error);
-  if (error instanceof ConnectionException || (code && (CONNECTION_CODES.has(code) || code.startsWith("08")))) {
+  // 08P01 é violação de protocolo (ex.: NUL na string), não queda de conexão
+  const connectionLost = code !== undefined && code !== "08P01" && (CONNECTION_CODES.has(code) || code.startsWith("08"));
+  if (error instanceof ConnectionException || connectionLost) {
     return new TransientInfraError(FailureCode.DATABASE_UNAVAILABLE, "Database unavailable", error);
   }
   return error;

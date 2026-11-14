@@ -8,6 +8,7 @@ import { FailureCode } from "../../domain/failure-code";
 import { WagerTransactionStatus } from "../../domain/wager-transaction";
 import { addToLogContext, currentLogContext } from "../../infrastructure/observability/log-context";
 import { METRICS } from "../../tokens";
+import { text } from "../../application/input-schemas";
 import { parseInput, uuidParam, wagerBody } from "./dto";
 import { ProviderAuthGuard } from "./provider-auth.guard";
 
@@ -46,6 +47,7 @@ export class WageringController {
   ): Promise<void> {
     const idempotencyKey = idempotencyKeyHeader?.trim();
     if (!idempotencyKey) throw new ValidationError(FailureCode.MISSING_IDEMPOTENCY_KEY, "Idempotency-Key header is required");
+    parseInput(text, idempotencyKey);
     const input = parseInput(wagerBody, body);
 
     const correlationId = currentLogContext()?.correlationId ?? Bun.randomUUIDv7();
@@ -73,6 +75,6 @@ export class ProviderTransactionsController {
 
   @Get(":providerId/wagering/transactions/:externalTransactionId")
   get(@Param("providerId") providerId: string, @Param("externalTransactionId") externalTransactionId: string): Promise<TransactionView> {
-    return this.queries.getByExternalId(providerId, externalTransactionId);
+    return this.queries.getByExternalId(parseInput(text, providerId), parseInput(text, externalTransactionId));
   }
 }
