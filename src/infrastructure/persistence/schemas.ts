@@ -30,6 +30,7 @@ export interface WagerTransactionRow {
   status: string;
   failureCode: string | null;
   observedBalance: string | null;
+  observedCurrency: string | null;
   referenceAttempts: number;
   nextReferenceAttemptAt: Date | null;
   createdAt: Date;
@@ -110,6 +111,7 @@ export const WagerTransactionSchema = new EntitySchema<WagerTransactionRow>({
     status: { type: "text" },
     failureCode: { type: "text", ...nullable },
     observedBalance: { ...money, ...nullable },
+    observedCurrency: { type: "string", length: 3, ...nullable },
     referenceAttempts: { type: "integer" },
     nextReferenceAttemptAt: { ...timestamp, ...nullable },
     createdAt: timestamp,

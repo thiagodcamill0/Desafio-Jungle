@@ -60,7 +60,7 @@ export const transactionMapper = {
       referenceTransactionId: orUndefined(row.referenceTransactionId),
       failureCode: orUndefined(row.failureCode) as FailureCode | undefined,
       processedAt: orUndefined(row.processedAt),
-      observedBalance: row.observedBalance === null ? undefined : moneyFromDb(row.observedBalance, row.currency),
+      observedBalance: row.observedBalance === null ? undefined : moneyFromDb(row.observedBalance, row.observedCurrency ?? row.currency),
       referenceAttempts: row.referenceAttempts,
       nextReferenceAttemptAt: orUndefined(row.nextReferenceAttemptAt),
     });
@@ -85,6 +85,7 @@ export const transactionMapper = {
       status: s.status,
       failureCode: orNull(s.failureCode),
       observedBalance: s.observedBalance ? s.observedBalance.amount : null,
+      observedCurrency: s.observedBalance ? s.observedBalance.currency : null,
       referenceAttempts: s.referenceAttempts,
       nextReferenceAttemptAt: orNull(s.nextReferenceAttemptAt),
       createdAt: s.createdAt,

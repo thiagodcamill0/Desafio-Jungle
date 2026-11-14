@@ -4,7 +4,7 @@ import type { TransactionRunner } from "../../src/application/ports";
 import { SubmitWagerTransaction } from "../../src/application/submit-wager-transaction";
 import { MikroOrmTransactionRunner } from "../../src/infrastructure/persistence/transaction-runner";
 import { SystemClock, UuidV7Generator } from "../../src/infrastructure/system";
-import { createTestApp, postJson, type TestApp } from "../support/test-app";
+import { createTestApp, getJson, postJson, type TestApp } from "../support/test-app";
 import { assertLedgerMatchesBalance } from "../support/invariants";
 import { countLedger, getWallet, openWallet, postWager, wager } from "../support/factories";
 
@@ -216,5 +216,20 @@ describe("limite de saldo", () => {
     expect(res.status).toBe(422);
     expect(res.body).toMatchObject({ code: "BALANCE_LIMIT_EXCEEDED", status: "REJECTED", balance: { amount: "99999999999999999.00" } });
     await assertLedgerMatchesBalance(t.sql, w.walletId);
+  });
+});
+
+describe("moeda do saldo observado", () => {
+  test("replay de CURRENCY_MISMATCH devolve o saldo na moeda da wallet", async () => {
+    const w = await openWallet(t.baseUrl, "100.00");
+    const cmd = wager({ ...w, amount: "5.00", currency: "USD" });
+    const first = await postWager(t.baseUrl, cmd);
+    expect(first.status).toBe(422);
+    expect(first.body.balance).toEqual({ amount: "100.00", currency: "BRL" });
+
+    const replay = await postWager(t.baseUrl, cmd);
+    expect(replay.body).toMatchObject({ code: "CURRENCY_MISMATCH", idempotentReplay: true, balance: { amount: "100.00", currency: "BRL" } });
+    const view = await getJson(`${t.baseUrl}/wagering/transactions/${first.body.transactionId}`);
+    expect(view.body.balance).toEqual({ amount: "100.00", currency: "BRL" });
   });
 });
