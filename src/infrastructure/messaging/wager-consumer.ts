@@ -35,16 +35,20 @@ export interface WagerConsumerOptions {
   enabled: boolean;
   waitTimeSeconds: number;
   shutdownGraceMs: number;
+  // usado para pausar o consumo enquanto o banco estiver fora
+  isDatabaseUp?: () => Promise<boolean>;
 }
 
 const DEFAULTS: WagerConsumerOptions = { enabled: false, waitTimeSeconds: 10, shutdownGraceMs: 20_000 };
 const MAX_RETRY_DELAY_SECONDS = 60;
+const MAX_PAUSE_MS = 10_000;
 
 // Mesmo caso de uso do HTTP. Ack só depois do commit: negócio = ack, transitório = retry, permanente = DLQ.
 export class WagerConsumer {
   private readonly logger = new Logger("WagerConsumer");
   private readonly options: WagerConsumerOptions;
   private stopping = false;
+  private databaseDown = false;
   private abort = new AbortController();
   private loop?: Promise<void>;
 
@@ -87,7 +91,7 @@ export class WagerConsumer {
 
     const outcomes: HandleOutcome[] = [];
     for (const [index, message] of messages.entries()) {
-      if (this.stopping) {
+      if (this.stopping || this.databaseDown) {
         await this.release(queueUrl, messages.slice(index));
         break;
       }
@@ -129,6 +133,11 @@ export class WagerConsumer {
       return "acked";
     } catch (error) {
       const code = failureCodeOf(error);
+      // banco fora: não conta contra o limite de tentativas; o loop pausa até ele voltar
+      if (code === FailureCode.DATABASE_UNAVAILABLE && this.options.isDatabaseUp) {
+        this.databaseDown = true;
+        return this.retry(queueUrl, message, 1, code, messageId);
+      }
       if (isPermanent(error) || receiveCount >= this.config.maxReceiveCount) {
         return this.deadLetter(queueUrl, message, code, messageId);
       }
@@ -139,12 +148,29 @@ export class WagerConsumer {
   private async run(): Promise<void> {
     while (!this.stopping) {
       try {
+        if (this.databaseDown) await this.waitForDatabase();
+        if (this.stopping) break;
         await this.pollOnce();
       } catch (error) {
         if (this.stopping) break;
         this.logger.warn(`receive failed: ${error instanceof Error ? error.message : String(error)}`);
         await Bun.sleep(1_000);
       }
+    }
+  }
+
+  // sem receber mensagens enquanto o banco não responde, para o contador de recebimentos não estourar
+  private async waitForDatabase(): Promise<void> {
+    let delay = 1_000;
+    while (!this.stopping) {
+      if (await this.options.isDatabaseUp!().catch(() => false)) {
+        this.databaseDown = false;
+        this.logger.log("database is back, resuming consumption");
+        return;
+      }
+      this.logger.warn(`database unavailable, consumer paused for ${delay / 1_000}s`);
+      await Bun.sleep(delay);
+      delay = Math.min(delay * 2, MAX_PAUSE_MS);
     }
   }
 

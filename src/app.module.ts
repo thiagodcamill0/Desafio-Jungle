@@ -62,9 +62,12 @@ export class AppModule {
         },
         {
           provide: WagerConsumer,
-          useFactory: (client: SQSClient, submit: SubmitWagerTransaction, metrics: Metrics, faults: FaultInjector) =>
-            new WagerConsumer(client, config, submit, metrics, faults, { enabled: config.roles.has("consumer") }),
-          inject: [SQS_CLIENT, SubmitWagerTransaction, METRICS, FAULT_INJECTOR],
+          useFactory: (client: SQSClient, submit: SubmitWagerTransaction, metrics: Metrics, faults: FaultInjector, orm: MikroORM) =>
+            new WagerConsumer(client, config, submit, metrics, faults, {
+              enabled: config.roles.has("consumer"),
+              isDatabaseUp: () => orm.em.getConnection().execute("select 1").then(() => true, () => false),
+            }),
+          inject: [SQS_CLIENT, SubmitWagerTransaction, METRICS, FAULT_INJECTOR, MikroORM],
         },
         {
           provide: OutboxPublisher,

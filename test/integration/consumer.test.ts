@@ -270,3 +270,38 @@ describe("WagerConsumer", () => {
     expect(await instance.exited).toBe(0);
   }, 30_000);
 });
+
+describe("banco fora do ar", () => {
+  test("queda maior que a janela de retries → consumidor pausa e a mensagem não vai para a DLQ", async () => {
+    const w = await openWallet(t.baseUrl, "100.00");
+    const cmd = wager({ ...w, amount: "10.00" });
+    const message = envelope(cmd);
+    const real = new SubmitWagerTransaction(runner, new SystemClock(), new UuidV7Generator());
+    let databaseDown = true;
+    const submit = Object.assign(Object.create(real), {
+      execute: (...args: Parameters<SubmitWagerTransaction["execute"]>) =>
+        databaseDown ? Promise.reject(new TransientInfraError(FailureCode.DATABASE_UNAVAILABLE, "simulated outage")) : real.execute(...args),
+    }) as SubmitWagerTransaction;
+
+    const consumer = new WagerConsumer(sqs, config(), submit, new CountingMetrics(), { hit: () => {} }, {
+      enabled: true,
+      waitTimeSeconds: 1,
+      isDatabaseUp: async () => !databaseDown,
+    });
+    consumer.onApplicationBootstrap();
+    try {
+      await send(message, w.walletId);
+      // sem a pausa, com maxReceiveCount 3 e backoff 2 s + 4 s, a mensagem iria para a DLQ em ~6 s
+      await Bun.sleep(9_000);
+      databaseDown = false;
+      const deadline = Date.now() + 15_000;
+      while ((await txCount(cmd.idempotencyKey)) === 0 && Date.now() < deadline) await Bun.sleep(250);
+    } finally {
+      await consumer.onModuleDestroy();
+    }
+
+    expect(await txCount(cmd.idempotencyKey)).toBe(1);
+    expect((await receiveAll(queues.wagerDlqName, 1_500)).map((m) => m.messageId)).not.toContain(message.messageId);
+    await assertLedgerMatchesBalance(t.sql, w.walletId);
+  }, 40_000);
+});
