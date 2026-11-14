@@ -20,3 +20,18 @@ export function parseInput<T>(schema: z.ZodType<T>, value: unknown): T {
   const where = issue?.path.length ? `${issue.path.join(".")}: ` : "";
   throw new ValidationError(FailureCode.INVALID_PAYLOAD, `${where}${issue?.message ?? "invalid input"}`);
 }
+
+const text = z.string().trim().min(1);
+
+// kind segue como texto: o caso de uso distingue kind desconhecido (INVALID_PAYLOAD) de OPENING (KIND_NOT_ALLOWED)
+export const wagerBody = z.object({
+  providerId: text,
+  externalTransactionId: text,
+  playerId: z.uuid(),
+  walletId: z.uuid(),
+  roundId: text,
+  gameId: text,
+  kind: text,
+  money: moneyInput,
+  referenceExternalTransactionId: text.optional(),
+});

@@ -3,6 +3,7 @@ import { APP_FILTER } from "@nestjs/core";
 import { MikroORM } from "@mikro-orm/postgresql";
 import { MikroOrmModule } from "@mikro-orm/nestjs";
 import { OpenWallet } from "./application/open-wallet";
+import { SubmitWagerTransaction } from "./application/submit-wager-transaction";
 import type { Clock, IdGenerator, TransactionRunner } from "./application/ports";
 import { WalletQueries } from "./application/queries";
 import type { AppConfig } from "./infrastructure/config";
@@ -12,6 +13,7 @@ import { MikroOrmTransactionRunner } from "./infrastructure/persistence/transact
 import { AllowAllProviderIdentity, SystemClock, UuidV7Generator } from "./infrastructure/system";
 import { HttpErrorFilter } from "./interface/http/error-mapping";
 import { ProviderAuthGuard } from "./interface/http/provider-auth.guard";
+import { WageringController } from "./interface/http/wagering.controller";
 import { WalletsController } from "./interface/http/wallets.controller";
 import { APP_CONFIG, CLOCK, ID_GENERATOR, PROVIDER_IDENTITY, TRANSACTION_RUNNER } from "./tokens";
 
@@ -23,7 +25,7 @@ export class AppModule {
     return {
       module: AppModule,
       imports: [MikroOrmModule.forRoot(mikroOrmOptions(config))],
-      controllers: [HealthController, WalletsController],
+      controllers: [HealthController, WalletsController, WageringController],
       providers: [
         { provide: APP_CONFIG, useValue: config },
         { provide: APP_FILTER, useClass: HttpErrorFilter },
@@ -34,6 +36,11 @@ export class AppModule {
         {
           provide: OpenWallet,
           useFactory: (runner: TransactionRunner, clock: Clock, ids: IdGenerator) => new OpenWallet(runner, clock, ids),
+          inject: [TRANSACTION_RUNNER, CLOCK, ID_GENERATOR],
+        },
+        {
+          provide: SubmitWagerTransaction,
+          useFactory: (runner: TransactionRunner, clock: Clock, ids: IdGenerator) => new SubmitWagerTransaction(runner, clock, ids),
           inject: [TRANSACTION_RUNNER, CLOCK, ID_GENERATOR],
         },
         { provide: WalletQueries, useFactory: (runner: TransactionRunner) => new WalletQueries(runner), inject: [TRANSACTION_RUNNER] },
