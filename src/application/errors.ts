@@ -49,3 +49,17 @@ export class InboxPayloadMismatchError extends Error {
     this.name = "InboxPayloadMismatchError";
   }
 }
+
+export class ValidationError extends ApplicationError {}
+
+export class NotFoundError extends ApplicationError {
+  constructor(code: FailureCode, message = "Resource not found") {
+    super(code, message);
+  }
+}
+
+export class ConflictError extends ApplicationError {
+  constructor(code: FailureCode, message = "Conflict") {
+    super(code, message);
+  }
+}
