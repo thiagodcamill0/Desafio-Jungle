@@ -4,3 +4,6 @@ export const CLOCK = Symbol("CLOCK");
 export const ID_GENERATOR = Symbol("ID_GENERATOR");
 export const PROVIDER_IDENTITY = Symbol("PROVIDER_IDENTITY");
 export const METRICS = Symbol("METRICS");
+export const SQS_CLIENT = Symbol("SQS_CLIENT");
+export const EVENT_PUBLISHER = Symbol("EVENT_PUBLISHER");
+export const FAULT_INJECTOR = Symbol("FAULT_INJECTOR");

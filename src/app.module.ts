@@ -4,10 +4,14 @@ import { MikroORM } from "@mikro-orm/postgresql";
 import { MikroOrmModule } from "@mikro-orm/nestjs";
 import { OpenWallet } from "./application/open-wallet";
 import { SubmitWagerTransaction } from "./application/submit-wager-transaction";
-import type { Clock, IdGenerator, Metrics, TransactionRunner } from "./application/ports";
+import type { Clock, EventPublisher, FaultInjector, IdGenerator, Metrics, TransactionRunner } from "./application/ports";
 import { TransactionQueries, WalletQueries } from "./application/queries";
 import { ReconcileWallet } from "./application/reconcile-wallet";
+import type { SQSClient } from "@aws-sdk/client-sqs";
 import type { AppConfig } from "./infrastructure/config";
+import { EnvFaultInjector } from "./infrastructure/fault-injector";
+import { OutboxPublisher } from "./infrastructure/messaging/outbox-publisher";
+import { createSqsClient, SqsEventPublisher } from "./infrastructure/messaging/sqs";
 import { HealthController } from "./infrastructure/observability/health.controller";
 import { mikroOrmOptions } from "./infrastructure/persistence/mikro-orm.config";
 import { MikroOrmTransactionRunner } from "./infrastructure/persistence/transaction-runner";
@@ -17,7 +21,7 @@ import { HttpErrorFilter } from "./interface/http/error-mapping";
 import { ProviderAuthGuard } from "./interface/http/provider-auth.guard";
 import { ProviderTransactionsController, WageringController } from "./interface/http/wagering.controller";
 import { WalletsController } from "./interface/http/wallets.controller";
-import { APP_CONFIG, CLOCK, ID_GENERATOR, METRICS, PROVIDER_IDENTITY, TRANSACTION_RUNNER } from "./tokens";
+import { APP_CONFIG, CLOCK, EVENT_PUBLISHER, FAULT_INJECTOR, ID_GENERATOR, METRICS, PROVIDER_IDENTITY, SQS_CLIENT, TRANSACTION_RUNNER } from "./tokens";
 
 export { APP_CONFIG } from "./tokens";
 
@@ -35,6 +39,9 @@ export class AppModule {
         { provide: ID_GENERATOR, useClass: UuidV7Generator },
         { provide: PROVIDER_IDENTITY, useClass: AllowAllProviderIdentity },
         { provide: METRICS, useClass: NoopMetrics },
+        { provide: FAULT_INJECTOR, useValue: new EnvFaultInjector(config.faultPoint) },
+        { provide: SQS_CLIENT, useFactory: () => createSqsClient(config) },
+        { provide: EVENT_PUBLISHER, useFactory: (client: SQSClient) => new SqsEventPublisher(client, config.eventsQueueName), inject: [SQS_CLIENT] },
         { provide: TRANSACTION_RUNNER, useFactory: (orm: MikroORM) => new MikroOrmTransactionRunner(orm), inject: [MikroORM] },
         {
           provide: OpenWallet,
@@ -45,6 +52,12 @@ export class AppModule {
           provide: SubmitWagerTransaction,
           useFactory: (runner: TransactionRunner, clock: Clock, ids: IdGenerator) => new SubmitWagerTransaction(runner, clock, ids),
           inject: [TRANSACTION_RUNNER, CLOCK, ID_GENERATOR],
+        },
+        {
+          provide: OutboxPublisher,
+          useFactory: (runner: TransactionRunner, events: EventPublisher, clock: Clock, metrics: Metrics, faults: FaultInjector) =>
+            new OutboxPublisher(runner, events, clock, metrics, faults, { enabled: config.roles.has("outbox") }),
+          inject: [TRANSACTION_RUNNER, EVENT_PUBLISHER, CLOCK, METRICS, FAULT_INJECTOR],
         },
         {
           provide: PendingReferenceWorker,

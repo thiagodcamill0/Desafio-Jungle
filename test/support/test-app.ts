@@ -6,6 +6,7 @@ import { createTestDatabase, type Exec } from "./test-db";
 export interface TestApp {
   app: INestApplication;
   baseUrl: string;
+  databaseUrl: string;
   sql: Exec;
   close(): Promise<void>;
 }
@@ -20,6 +21,7 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
   return {
     app,
     baseUrl,
+    databaseUrl: db.url,
     sql: db.sql,
     close: async () => {
       await app.close();
